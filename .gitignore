@@ -48,3 +48,4 @@ dump/
 caddy_data/
 tmp
 notebooks/
+.DS_Store

@@ -139,6 +139,7 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	// log environment
+	log.Info().Interface("config", config).Msg("Config loaded")
 	if strings.ToLower(os.Getenv("LOG_ENV")) == "true" {
 		log.Info().Interface("config", config).Msg("Config loaded")
 	}
