@@ -93,31 +93,13 @@ func (v XValidator) Validate(data interface{}) []ErrorResponse {
 func NewFiberApp() *fiber.App {
 	config, _ := configs.LoadConfig(".")
 
-	app := fiber.New(
-	// fiber.Config{
-	// 	ErrorHandler: func(c *fiber.Ctx, err error) error {
-	// 		return c.Status(fiber.StatusBadRequest).JSON(GlobalErrorHandlerResp{
-	// 			Success: false,
-	// 			Message: err.Error(),
-	// 		})
-	// 	},
-	// },
-	)
+	app := fiber.New()
 	tp := initTracer()
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
 			log.Printf("Error shutting down tracer provider: %v", err)
 		}
 	}()
-
-	// Provide a minimal config
-	// app.Use(basicauth.New(basicauth.Config{
-	// 	Users: map[string]string{
-	// 		"john":  "doe",
-	// 		"admin": "123456",
-	// 	},
-
-	// }))
 
 	app.Use(otelfiber.Middleware())
 	app.Use(cors.New())
@@ -134,7 +116,7 @@ func NewFiberApp() *fiber.App {
 		}),
 	)
 
-	app.Get("/docs/*", fiberSwagger.WrapHandler)
+	app.All("/docs/*", fiberSwagger.WrapHandler)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Redirect("/docs/index.html")
