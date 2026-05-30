@@ -58,33 +58,32 @@ type LoginInput struct {
 	Password string `json:"password" validate:"required"`
 }
 
-// Info handles user info
+// InfoMe godoc
 // @Summary Get user info
-// @Security BearerAuth
 // @Description Get user info
+// @Security BearerAuth
 // @Tags auth
-// @Accept json
 // @Produce json
-// @Success 200 {object} map[string]string "message"
-// @Failure 500 {string} string "Internal Server Error"
-// @Router /api/auth/me [get]
+// @Success 200 {object} models.MessageResponse "message"
+// @Failure 500 {object} models.ErrorOutput "Internal Server Error"
+// @Router /api/v1/admin/auth/me [get]
 func (a *AuthControllers) InfoMe(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message": "Hello, World!",
 	})
 }
 
-// Login handles user login
+// Login godoc
 // @Summary Login a user
 // @Description Authenticate user and return a token
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param user body LoginInput true "User credentials"
-// @Success 200 {object} map[string]string "token"
-// @Failure 500 {string} string "Internal Server Error"
-// @Failure 401 {string} string "Unauthorized"
-// @Router /auth/login [post]
+// @Success 200 {object} models.TokenResponse "token"
+// @Failure 401 {object} models.ErrorOutput "Unauthorized"
+// @Failure 500 {object} models.ErrorOutput "Internal Server Error"
+// @Router /api/v1/admin/auth/login [post]
 func (a *AuthControllers) Login(c *fiber.Ctx) error {
 	var user_to_check LoginInput
 
@@ -156,16 +155,17 @@ func (a *AuthControllers) Login(c *fiber.Ctx) error {
 	return c.JSON(payload)
 }
 
-// Register handles user registration
+// Register godoc
 // @Summary Register a new user
 // @Description Create a new user account
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param user body models.User true "User credentials"
+// @Param user body models.UserRegisterInput true "User credentials"
 // @Success 201 {string} string "Created"
-// @Failure 500 {string} string "Internal Server Error"
-// @Router /auth/register [post]
+// @Failure 500 {object} models.ErrorOutput "Internal Server Error"
+// register endpoint disabled -- route commented out in routes.PublicAuthRoutes
+// // @Router /api/v1/admin/auth/register [post]
 func (a *AuthControllers) Register(c *fiber.Ctx) error {
 	// Parse user input
 	var user models.UserRegisterInput
@@ -215,11 +215,10 @@ func (a *AuthControllers) Register(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Description Get the 25 most recent activities across all users
 // @Tags auth
-// @Accept json
 // @Produce json
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output "Internal Server Error"
-// @Router /api/activities/recent [get]
+// @Success 200 {object} models.Output[[]middleware.Activity]
+// @Failure 500 {object} models.ErrorOutput "Internal Server Error"
+// @Router /api/v1/admin/activities/recent [get]
 func (a *AuthControllers) GetRecentActivities(c *fiber.Ctx) error {
 	log.Info().Msg("Getting recent activities")
 	activities, err := a.ActivitiesCollection.Find(c.Context(), bson.M{}, options.Find().SetSort(bson.M{"date": -1}).SetLimit(25))
@@ -243,11 +242,10 @@ func (a *AuthControllers) GetRecentActivities(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Description Get the 25 most recent activities for the authenticated user
 // @Tags auth
-// @Accept json
 // @Produce json
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output "Internal Server Error"
-// @Router /api/activities/me [get]
+// @Success 200 {object} models.Output[[]middleware.Activity]
+// @Failure 500 {object} models.ErrorOutput "Internal Server Error"
+// @Router /api/v1/admin/activities/me [get]
 func (a *AuthControllers) GetActivitesOfUser(c *fiber.Ctx) error {
 	log.Info().Str("user", c.Locals("user").(string)).Msg("Getting activities of user")
 	activities, err := a.ActivitiesCollection.Find(c.Context(), bson.M{"user_id": c.Locals("user").(string)}, options.Find().SetSort(bson.M{"date": -1}).SetLimit(25))

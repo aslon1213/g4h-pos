@@ -33,17 +33,16 @@ func New(db *mongo.Database) *ProposalsHandlers {
 	}
 }
 
-// GetImage handles GET /api/proposals/images
+// GetImage godoc
 // @Summary Get image by name
 // @Description Retrieves an image file by its name
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce octet-stream
 // @Param image_name query string true "Image name"
-// @Success 200 {file} file "Image file"
-// @Failure 404 {object} map[string]string "Image not found"
-// @Router /api/proposals/images [get]
+// @Success 200 {file} binary "Image file"
+// @Failure 404 {object} models.ErrorOutput "Image not found"
+// @Router /api/v1/admin/proposals/images [get]
 func (h *ProposalsHandlers) GetImage(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	_, span := tracer.Start(h.ctx, "GetImage")
@@ -62,18 +61,17 @@ func (h *ProposalsHandlers) GetImage(c *fiber.Ctx) error {
 	return c.SendFile(imagePath)
 }
 
-// GetImageByProposalID handles GET /api/proposals/image
+// GetImageByProposalID godoc
 // @Summary Get image upload page by proposal ID
 // @Description Retrieves the image upload page for a specific proposal record
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce html
 // @Param proposal_id query string true "Proposal ID"
 // @Success 200 {string} string "HTML page"
-// @Failure 400 {object} map[string]string "Invalid proposal ID"
-// @Failure 404 {object} map[string]string "Proposal not found"
-// @Router /api/proposals/image [get]
+// @Failure 400 {object} models.ErrorOutput "Invalid proposal ID"
+// @Failure 404 {object} models.ErrorOutput "Proposal not found"
+// @Router /api/v1/admin/proposals/image [get]
 func (h *ProposalsHandlers) GetImageByProposalID(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "GetImageByProposalID")
@@ -104,20 +102,20 @@ func (h *ProposalsHandlers) GetImageByProposalID(c *fiber.Ctx) error {
 	})
 }
 
-// UploadImage handles POST /api/proposals/image
+// UploadImage godoc
 // @Summary Upload image for proposal
 // @Description Uploads an image file for a specific proposal record
-// @Tags proposals
 // @Security BearerAuth
+// @Tags proposals
 // @Accept multipart/form-data
 // @Produce json
 // @Param proposal_id query string true "Proposal ID"
 // @Param file formData file true "Image file to upload"
 // @Success 303 {string} string "Redirect to proposals list"
-// @Failure 400 {object} map[string]string "Invalid proposal ID or no file uploaded"
-// @Failure 404 {object} map[string]string "Proposal not found"
-// @Failure 500 {object} map[string]string "Failed to save file or update proposal"
-// @Router /api/proposals/image [post]
+// @Failure 400 {object} models.ErrorOutput "Invalid proposal ID or no file uploaded"
+// @Failure 404 {object} models.ErrorOutput "Proposal not found"
+// @Failure 500 {object} models.ErrorOutput "Failed to save file or update proposal"
+// @Router /api/v1/admin/proposals/image [post]
 func (h *ProposalsHandlers) UploadImage(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "UploadImage")
@@ -189,19 +187,19 @@ func (h *ProposalsHandlers) UploadImage(c *fiber.Ctx) error {
 	return c.Redirect("/proposals/", http.StatusSeeOther)
 }
 
-// NewProposals handles POST /api/proposals/new
+// NewProposals godoc
 // @Summary Create new proposals
 // @Description Creates new proposal records for a specific branch
-// @Tags proposals
 // @Security BearerAuth
+// @Tags proposals
 // @Accept json
 // @Produce json
 // @Param branch query string true "Branch name"
 // @Param body body []string true "List of proposal names"
-// @Success 200 {object} map[string]interface{} "Proposals created successfully"
-// @Failure 400 {object} map[string]string "Invalid branch or request body"
-// @Failure 500 {object} map[string]string "Failed to create proposals"
-// @Router /api/proposals/new [post]
+// @Success 200 {object} models.MessageResponse "Proposals created successfully"
+// @Failure 400 {object} models.ErrorOutput "Invalid branch or request body"
+// @Failure 500 {object} models.ErrorOutput "Failed to create proposals"
+// @Router /api/v1/admin/proposals/new [post]
 func (h *ProposalsHandlers) NewProposals(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "NewProposals")
@@ -257,22 +255,21 @@ func (h *ProposalsHandlers) NewProposals(c *fiber.Ctx) error {
 	})
 }
 
-// GetProposals handles GET /api/proposals
+// GetProposals godoc
 // @Summary Get all proposals
 // @Description Retrieves all proposals with optional filters
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce json
 // @Param name query string false "Filter by name (case-insensitive)"
 // @Param branch query string false "Filter by branch (case-insensitive)"
 // @Param fulfilled query string false "Filter by fulfilled status (true/false)" default(false)
 // @Param date_from query string false "Filter by start date (YYYY-MM-DD)"
 // @Param date_to query string false "Filter by end date (YYYY-MM-DD)"
-// @Success 200 {array} map[string]interface{} "List of proposals"
-// @Failure 400 {object} map[string]string "Invalid date format"
-// @Failure 500 {object} map[string]string "Failed to fetch or decode proposals"
-// @Router /api/proposals [get]
+// @Success 200 {array} models.ProductProposal "List of proposals"
+// @Failure 400 {object} models.ErrorOutput "Invalid date format"
+// @Failure 500 {object} models.ErrorOutput "Failed to fetch or decode proposals"
+// @Router /api/v1/admin/proposals [get]
 func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "GetProposals")
@@ -370,18 +367,17 @@ func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// GetProposalDetail handles GET /api/proposals/detail
+// GetProposalDetail godoc
 // @Summary Get proposal detail
 // @Description Retrieves detailed information for a specific proposal record
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce html
 // @Param proposal_id query string true "Proposal ID"
 // @Success 200 {string} string "HTML page with proposal details"
-// @Failure 400 {object} map[string]string "Invalid proposal ID"
-// @Failure 404 {object} map[string]string "Proposal not found"
-// @Router /api/proposals/detail [get]
+// @Failure 400 {object} models.ErrorOutput "Invalid proposal ID"
+// @Failure 404 {object} models.ErrorOutput "Proposal not found"
+// @Router /api/v1/admin/proposals/detail [get]
 func (h *ProposalsHandlers) GetProposalDetail(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "GetProposalDetail")
@@ -425,19 +421,19 @@ type EditProposalRequest struct {
 	Fulfilled *bool  `json:"fulfilled" form:"fulfilled"`
 }
 
-// EditProposal handles put /api/proposals/edit
+// EditProposal godoc
 // @Summary Edit proposal
 // @Description Updates an existing proposal record
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json,application/x-www-form-urlencoded
+// @Tags proposals
+// @Accept json
 // @Produce json
 // @Param proposal_id query string true "Proposal ID"
 // @Param body body EditProposalRequest false "Proposal update data"
 // @Success 302 {string} string "Redirect to proposals list"
-// @Failure 400 {object} map[string]string "Invalid proposal ID or request data"
-// @Failure 500 {object} map[string]string "Failed to update proposal"
-// @Router /api/proposals/edit [put]
+// @Failure 400 {object} models.ErrorOutput "Invalid proposal ID or request data"
+// @Failure 500 {object} models.ErrorOutput "Failed to update proposal"
+// @Router /api/v1/admin/proposals/edit [put]
 func (h *ProposalsHandlers) EditProposal(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "EditProposal")
@@ -484,19 +480,18 @@ func (h *ProposalsHandlers) EditProposal(c *fiber.Ctx) error {
 	return c.Redirect("/proposals", http.StatusFound)
 }
 
-// DeleteProposal handles DELETE /api/proposals/delete
+// DeleteProposal godoc
 // @Summary Delete proposal
 // @Description Deletes a proposal record and its associated image file
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce json
 // @Param proposal_id query string true "Proposal ID"
 // @Success 302 {string} string "Redirect to proposals list"
-// @Failure 400 {object} map[string]string "Invalid proposal ID"
-// @Failure 404 {object} map[string]string "Proposal not found"
-// @Failure 500 {object} map[string]string "Failed to delete proposal"
-// @Router /api/proposals/delete [delete]
+// @Failure 400 {object} models.ErrorOutput "Invalid proposal ID"
+// @Failure 404 {object} models.ErrorOutput "Proposal not found"
+// @Failure 500 {object} models.ErrorOutput "Failed to delete proposal"
+// @Router /api/v1/admin/proposals/delete [delete]
 func (h *ProposalsHandlers) DeleteProposal(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "DeleteProposal")
@@ -544,19 +539,18 @@ func (h *ProposalsHandlers) DeleteProposal(c *fiber.Ctx) error {
 	return c.Redirect("/proposals", http.StatusFound)
 }
 
-// FulfillProposals handles GET /api/proposals/fulfill
+// FulfillProposals godoc
 // @Summary Fulfill proposals
 // @Description Marks multiple proposals as fulfilled for a specific branch
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce json
 // @Param branch query string true "Branch name"
 // @Param ids query string true "Comma-separated list of proposal IDs"
-// @Success 200 {object} map[string]interface{} "Fulfillment result"
-// @Failure 400 {object} map[string]string "Invalid branch or no valid IDs provided"
-// @Failure 500 {object} map[string]string "Failed to fulfill proposals"
-// @Router /api/proposals/fulfill [get]
+// @Success 200 {object} models.MessageResponse "Fulfillment result"
+// @Failure 400 {object} models.ErrorOutput "Invalid branch or no valid IDs provided"
+// @Failure 500 {object} models.ErrorOutput "Failed to fulfill proposals"
+// @Router /api/v1/admin/proposals/fulfill [get]
 func (h *ProposalsHandlers) FulfillProposals(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "FulfillProposals")
@@ -628,16 +622,15 @@ func (h *ProposalsHandlers) FulfillProposals(c *fiber.Ctx) error {
 	})
 }
 
-// GeneratePDF handles GET /api/proposals/pdf/pdf
+// GeneratePDF godoc
 // @Summary Generate PDF
 // @Description Generates a PDF document with unfulfilled proposals
-// @Tags proposals
 // @Security BearerAuth
-// @Accept json
+// @Tags proposals
 // @Produce json
-// @Success 200 {object} map[string]interface{} "PDF generation result with proposals data"
-// @Failure 500 {object} map[string]string "Failed to fetch or decode proposals"
-// @Router /api/proposals/pdf/pdf [get]
+// @Success 200 {object} models.MessageResponse "PDF generation result with proposals data"
+// @Failure 500 {object} models.ErrorOutput "Failed to fetch or decode proposals"
+// @Router /api/v1/admin/proposals/pdf/pdf [get]
 func (h *ProposalsHandlers) GeneratePDF(c *fiber.Ctx) error {
 	tracer := otel.Tracer("proposals-handlers")
 	ctx, span := tracer.Start(h.ctx, "GeneratePDF")

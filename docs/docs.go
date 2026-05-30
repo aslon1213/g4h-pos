@@ -24,7 +24,108 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/activities/me": {
+        "/api/sales/transactions/{branch_id}": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new sales transaction for a branch",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sales/transactions"
+                ],
+                "summary": "Create a new sales transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch ID",
+                        "name": "branch_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Transaction details",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.TransactionBase"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_Transaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sales/transactions/{transaction_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a sales transaction by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sales/transactions"
+                ],
+                "summary": "Delete a sales transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "transaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_Transaction"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/activities/me": {
             "get": {
                 "security": [
                     {
@@ -32,9 +133,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get the 25 most recent activities for the authenticated user",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -46,19 +144,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_middleware_Activity"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/activities/recent": {
+        "/api/v1/admin/activities/recent": {
             "get": {
                 "security": [
                     {
@@ -66,9 +164,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get the 25 most recent activities across all users",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -80,19 +175,65 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_middleware_Activity"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/auth/me": {
+        "/api/v1/admin/auth/login": {
+            "post": {
+                "description": "Authenticate user and return a token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Login a user",
+                "parameters": [
+                    {
+                        "description": "User credentials",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "token",
+                        "schema": {
+                            "$ref": "#/definitions/models.TokenResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/auth/me": {
             "get": {
                 "security": [
                     {
@@ -100,9 +241,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get user info",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -114,22 +252,19 @@ const docTemplate = `{
                     "200": {
                         "description": "message",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/bnpl": {
+        "/api/v1/admin/bnpl": {
             "post": {
                 "security": [
                     {
@@ -162,25 +297,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_BNPL"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/bnpl/{id}": {
+        "/api/v1/admin/bnpl/{id}": {
             "get": {
                 "security": [
                     {
@@ -188,9 +323,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get details of a specific BNPL transaction",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -211,13 +343,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_BNPL"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -229,9 +361,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Delete an existing BNPL transaction",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -252,22 +381,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/bnpl/{id}/credit": {
+        "/api/v1/admin/bnpl/{id}/credit": {
             "post": {
                 "security": [
                     {
@@ -312,19 +438,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.BNPL"
+                            "$ref": "#/definitions/models.Output-array_models_BNPL"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/branches/{branch_id}/bnpls": {
+        "/api/v1/admin/branches/{branch_id}/bnpls": {
             "get": {
                 "security": [
                     {
@@ -332,9 +458,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get all BNPL transactions for a specific branch",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -373,19 +496,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Customer"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/customers": {
+        "/api/v1/admin/customers": {
             "get": {
                 "security": [
                     {
@@ -445,13 +568,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.CustomerQueryOutput"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -488,25 +617,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Customer"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/customers/{customer_id}/bnpls": {
+        "/api/v1/admin/customers/{customer_id}/bnpls": {
             "get": {
                 "security": [
                     {
@@ -514,9 +649,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get all BNPL transactions for a specific customer",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -543,19 +675,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_BNPL"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/customers/{id}": {
+        "/api/v1/admin/customers/{id}": {
             "get": {
                 "security": [
                     {
@@ -563,9 +695,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get a customer by its ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -586,19 +715,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Customer"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -642,25 +771,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Customer"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -672,9 +807,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Delete a customer from the database",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -695,25 +827,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.MessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/finance": {
+        "/api/v1/admin/finance": {
             "post": {
                 "security": [
                     {
@@ -746,25 +884,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_BranchFinance"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/finance/branch/id/{id}": {
+        "/api/v1/admin/finance/branch/id/{id}": {
             "get": {
                 "security": [
                     {
@@ -792,19 +930,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_BranchFinance"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/finance/branch/name/{branch_name}": {
+        "/api/v1/admin/finance/branch/name/{branch_name}": {
             "get": {
                 "security": [
                     {
@@ -832,19 +970,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_BranchFinance"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/finance/branches": {
+        "/api/v1/admin/finance/branches": {
             "get": {
                 "security": [
                     {
@@ -863,19 +1001,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_BranchFinance"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/finance/id/{id}": {
+        "/api/v1/admin/finance/id/{id}": {
             "get": {
                 "security": [
                     {
@@ -903,19 +1041,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_BranchFinance"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals": {
+        "/api/v1/admin/journals": {
             "post": {
                 "security": [
                     {
@@ -948,25 +1092,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Journal"
+                            "$ref": "#/definitions/models.Output-models_JournalWithTransactionID"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals/branch/{branch_id}": {
+        "/api/v1/admin/journals/branch/{branch_id}": {
             "get": {
                 "security": [
                     {
@@ -974,9 +1118,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Query journal entries by branch ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1009,22 +1150,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.Journal"
-                            }
+                            "$ref": "#/definitions/models.Output-array_models_Journal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals/report": {
+        "/api/v1/admin/journals/report": {
             "get": {
                 "security": [
                     {
@@ -1032,9 +1176,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get a report of journal entries",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1042,10 +1183,23 @@ const docTemplate = `{
                     "journals"
                 ],
                 "summary": "Get a report",
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MessageResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
             }
         },
-        "/api/journals/{journal_id}": {
+        "/api/v1/admin/journals/{journal_id}": {
             "get": {
                 "security": [
                     {
@@ -1053,9 +1207,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get a journal entry by its ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1076,19 +1227,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Journal"
+                            "$ref": "#/definitions/models.Output-models_Journal"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals/{journal_id}/close": {
+        "/api/v1/admin/journals/{journal_id}/close": {
             "post": {
                 "security": [
                     {
@@ -1125,31 +1276,28 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.Transaction"
-                            }
+                            "$ref": "#/definitions/models.Output-models_Journal"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals/{journal_id}/operations": {
+        "/api/v1/admin/journals/{journal_id}/operations": {
             "post": {
                 "security": [
                     {
@@ -1186,28 +1334,28 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Journal"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals/{journal_id}/operations/{id}": {
+        "/api/v1/admin/journals/{journal_id}/operations/{id}": {
             "get": {
                 "security": [
                     {
@@ -1215,9 +1363,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get an operation transaction by ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1245,19 +1390,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Transaction"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -1269,9 +1408,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Update an operation transaction by ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1312,19 +1448,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Journal"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -1336,9 +1478,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Delete an operation transaction by ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1366,25 +1505,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Journal"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/journals/{journal_id}/reopen": {
+        "/api/v1/admin/journals/{journal_id}/reopen": {
             "post": {
                 "security": [
                     {
@@ -1392,9 +1531,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Reopen a journal entry by removing its closing transactions",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1415,22 +1551,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.Transaction"
-                            }
+                            "$ref": "#/definitions/models.Output-models_Journal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Error"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/products": {
+        "/api/v1/admin/products": {
             "get": {
                 "security": [
                     {
@@ -1438,9 +1577,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Query products based on various parameters",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1478,19 +1614,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Product"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -1527,25 +1663,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Product"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/products/images/{key}": {
+        "/api/v1/admin/products/images/{key}": {
             "get": {
                 "security": [
                     {
@@ -1591,7 +1727,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/products/transfer": {
+        "/api/v1/admin/products/transfer": {
             "post": {
                 "security": [
                     {
@@ -1599,9 +1735,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Transfers product quantity from one location to another",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1609,10 +1742,23 @@ const docTemplate = `{
                     "products"
                 ],
                 "summary": "Transfer product between locations",
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-array_models_Product"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
             }
         },
-        "/api/products/{id}": {
+        "/api/v1/admin/products/{id}": {
             "get": {
                 "security": [
                     {
@@ -1620,9 +1766,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Retrieves a product by its ID",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1643,13 +1786,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Product"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -1693,19 +1836,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Product"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -1717,9 +1860,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Deletes a product and its related data",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1740,19 +1880,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Product"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/products/{id}/income": {
+        "/api/v1/admin/products/{id}/income": {
             "post": {
                 "security": [
                     {
@@ -1792,31 +1932,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Product"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/products/{product_id}/images": {
+        "/api/v1/admin/products/{product_id}/images": {
             "get": {
                 "security": [
                     {
@@ -1844,7 +1984,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
                         }
                     },
                     "400": {
@@ -1898,7 +2044,10 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -1916,7 +2065,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/products/{product_id}/images/{key}": {
+        "/api/v1/admin/products/{product_id}/images/{key}": {
             "delete": {
                 "security": [
                     {
@@ -1969,7 +2118,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/proposals": {
+        "/api/v1/admin/proposals": {
             "get": {
                 "security": [
                     {
@@ -1977,9 +2126,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Retrieves all proposals with optional filters",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2026,33 +2172,26 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/models.ProductProposal"
                             }
                         }
                     },
                     "400": {
                         "description": "Invalid date format",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Failed to fetch or decode proposals",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/delete": {
+        "/api/v1/admin/proposals/delete": {
             "delete": {
                 "security": [
                     {
@@ -2060,9 +2199,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Deletes a proposal record and its associated image file",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2089,34 +2225,25 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid proposal ID",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Proposal not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Failed to delete proposal",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/detail": {
+        "/api/v1/admin/proposals/detail": {
             "get": {
                 "security": [
                     {
@@ -2124,9 +2251,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Retrieves detailed information for a specific proposal record",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "text/html"
                 ],
@@ -2153,25 +2277,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid proposal ID",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Proposal not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/edit": {
+        "/api/v1/admin/proposals/edit": {
             "put": {
                 "security": [
                     {
@@ -2180,8 +2298,7 @@ const docTemplate = `{
                 ],
                 "description": "Updates an existing proposal record",
                 "consumes": [
-                    "application/json",
-                    "application/x-www-form-urlencoded"
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -2217,25 +2334,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid proposal ID or request data",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Failed to update proposal",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/fulfill": {
+        "/api/v1/admin/proposals/fulfill": {
             "get": {
                 "security": [
                     {
@@ -2243,9 +2354,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Marks multiple proposals as fulfilled for a specific branch",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2273,32 +2381,25 @@ const docTemplate = `{
                     "200": {
                         "description": "Fulfillment result",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid branch or no valid IDs provided",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Failed to fulfill proposals",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/image": {
+        "/api/v1/admin/proposals/image": {
             "get": {
                 "security": [
                     {
@@ -2306,9 +2407,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Retrieves the image upload page for a specific proposal record",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "text/html"
                 ],
@@ -2335,19 +2433,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid proposal ID",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Proposal not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -2395,34 +2487,25 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid proposal ID or no file uploaded",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Proposal not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Failed to save file or update proposal",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/images": {
+        "/api/v1/admin/proposals/images": {
             "get": {
                 "security": [
                     {
@@ -2430,9 +2513,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Retrieves an image file by its name",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/octet-stream"
                 ],
@@ -2459,16 +2539,13 @@ const docTemplate = `{
                     "404": {
                         "description": "Image not found",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/new": {
+        "/api/v1/admin/proposals/new": {
             "post": {
                 "security": [
                     {
@@ -2511,32 +2588,25 @@ const docTemplate = `{
                     "200": {
                         "description": "Proposals created successfully",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid branch or request body",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Failed to create proposals",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/proposals/pdf/pdf": {
+        "/api/v1/admin/proposals/pdf/pdf": {
             "get": {
                 "security": [
                     {
@@ -2544,9 +2614,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Generates a PDF document with unfulfilled proposals",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2558,124 +2625,19 @@ const docTemplate = `{
                     "200": {
                         "description": "PDF generation result with proposals data",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "500": {
                         "description": "Failed to fetch or decode proposals",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/sales/transactions/{branch_id}": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Create a new sales transaction for a branch",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sales/transactions"
-                ],
-                "summary": "Create a new sales transaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Branch ID",
-                        "name": "branch_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Transaction details",
-                        "name": "transaction",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/models.TransactionBase"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/models.Output"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/models.Output"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/models.Output"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sales/transactions/{transaction_id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Delete a sales transaction by ID",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sales/transactions"
-                ],
-                "summary": "Delete a sales transaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Transaction ID",
-                        "name": "transaction_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.Output"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/models.Output"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/suppliers": {
+        "/api/v1/admin/suppliers": {
             "get": {
                 "security": [
                     {
@@ -2741,13 +2703,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-array_models_Supplier"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -2784,31 +2746,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Supplier"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/suppliers/{branch_id}/{supplier_id}/transactions": {
+        "/api/v1/admin/suppliers/{branch_id}/{supplier_id}/transactions": {
             "post": {
                 "security": [
                     {
@@ -2856,25 +2818,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Transaction"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/suppliers/{id}": {
+        "/api/v1/admin/suppliers/{id}": {
             "get": {
                 "security": [
                     {
@@ -2905,19 +2867,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.Output-models_Supplier"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -2961,25 +2923,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -3014,25 +2976,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.MessageResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/models.Output"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/api/transactions/branch/{branch_id}": {
+        "/api/v1/admin/transactions/branch/{branch_id}": {
             "get": {
                 "security": [
                     {
@@ -3141,7 +3103,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/transactions/docs/initiator_type": {
+        "/api/v1/admin/transactions/docs/initiator_type": {
             "get": {
                 "security": [
                     {
@@ -3172,7 +3134,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/transactions/docs/payment_method": {
+        "/api/v1/admin/transactions/docs/payment_method": {
             "get": {
                 "security": [
                     {
@@ -3203,7 +3165,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/transactions/docs/type": {
+        "/api/v1/admin/transactions/docs/type": {
             "get": {
                 "security": [
                     {
@@ -3234,7 +3196,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/transactions/{id}": {
+        "/api/v1/admin/transactions/{id}": {
             "put": {
                 "security": [
                     {
@@ -3342,7 +3304,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/transactions/{transaction_id}": {
+        "/api/v1/admin/transactions/{transaction_id}": {
             "get": {
                 "security": [
                     {
@@ -3385,58 +3347,152 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/login": {
-            "post": {
-                "description": "Authenticate user and return a token",
-                "consumes": [
-                    "application/json"
+        "/api/v1/store/account/addresses": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "store-account"
                 ],
-                "summary": "Login a user",
-                "parameters": [
-                    {
-                        "description": "User credentials",
-                        "name": "user",
-                        "in": "body",
-                        "required": true,
+                "summary": "List the customer's saved addresses",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
                         "schema": {
-                            "$ref": "#/definitions/auth.LoginInput"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-account"
+                ],
+                "summary": "Add a new address to the customer's address book",
                 "responses": {
-                    "200": {
-                        "description": "token",
+                    "501": {
+                        "description": "Not Implemented",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
             }
         },
-        "/auth/register": {
+        "/api/v1/store/account/addresses/{address_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-account"
+                ],
+                "summary": "Update an address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Address ID",
+                        "name": "address_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-account"
+                ],
+                "summary": "Delete an address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Address ID",
+                        "name": "address_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/account/addresses/{address_id}/default": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-account"
+                ],
+                "summary": "Mark an address as the default",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Address ID",
+                        "name": "address_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/login": {
             "post": {
-                "description": "Create a new user account",
+                "description": "Authenticate a storefront customer and return a token",
                 "consumes": [
                     "application/json"
                 ],
@@ -3444,31 +3500,1183 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "store-auth"
                 ],
-                "summary": "Register a new user",
+                "summary": "Login a storefront customer",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/logout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Logout the current storefront customer",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Get current storefront customer profile",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Update current storefront customer profile",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/password/forgot": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Request a password reset",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/password/reset": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Reset a password with a reset token",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/refresh": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Refresh a storefront access token",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/auth/register": {
+            "post": {
+                "description": "Create a new storefront customer account",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-auth"
+                ],
+                "summary": "Register a storefront customer",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/cart": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Get the current customer's cart",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Empty the cart",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/cart/items": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Add an item to the cart",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/cart/items/{item_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Update a cart item's quantity",
                 "parameters": [
                     {
-                        "description": "User credentials",
-                        "name": "user",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/models.User"
-                        }
+                        "type": "string",
+                        "description": "Cart item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "501": {
+                        "description": "Not Implemented",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Remove an item from the cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/cart/promo": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Apply a coupon code to the cart",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-cart"
+                ],
+                "summary": "Remove the applied coupon from the cart",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/catalog/brands": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-catalog"
+                ],
+                "summary": "List brands / manufacturers",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/catalog/categories": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-catalog"
+                ],
+                "summary": "List catalog categories",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/catalog/categories/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-catalog"
+                ],
+                "summary": "Get a category by id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/catalog/categories/{id}/products": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-catalog"
+                ],
+                "summary": "List products in a category",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/catalog/search": {
+            "get": {
+                "description": "Full-text search with filters, facets, sort and pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-catalog"
+                ],
+                "summary": "Search the catalog",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/checkout/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "Preview checkout totals (items, shipping, tax) before placing an order",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "List the customer's orders",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "Place an order from the current cart",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/orders/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "Get an order by id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/orders/{id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "Cancel an order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/orders/{id}/reorder": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "Re-add the items of a past order to the cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/orders/{id}/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-orders"
+                ],
+                "summary": "Get an order's status / tracking",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/products": {
+            "get": {
+                "description": "List products with filter/sort/pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-products"
+                ],
+                "summary": "List storefront products",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "count",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/products/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-products"
+                ],
+                "summary": "Get a storefront product by id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/products/{id}/availability": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-products"
+                ],
+                "summary": "Get a product's stock availability per branch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/products/{id}/images": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-products"
+                ],
+                "summary": "Get a product's images",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/products/{id}/related": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-products"
+                ],
+                "summary": "Get related / recommended products",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/products/{id}/reviews": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-products"
+                ],
+                "summary": "List reviews for a product (public)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-reviews"
+                ],
+                "summary": "Create a review for a product",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/promotions": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-promotions"
+                ],
+                "summary": "List active promotions / banners",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/promotions/coupons/{code}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-promotions"
+                ],
+                "summary": "Look up a coupon's terms by code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Coupon code",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/promotions/validate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-promotions"
+                ],
+                "summary": "Validate a coupon against the current cart / customer",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/promotions/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-promotions"
+                ],
+                "summary": "Get a promotion by id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Promotion ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/reviews/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-reviews"
+                ],
+                "summary": "Update the caller's own review",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-reviews"
+                ],
+                "summary": "Delete the caller's own review",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/reviews/{id}/vote": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-reviews"
+                ],
+                "summary": "Vote a review helpful / unhelpful",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/wishlist": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-wishlist"
+                ],
+                "summary": "Get the current customer's wishlist",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/wishlist/items": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-wishlist"
+                ],
+                "summary": "Add a product to the wishlist",
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/wishlist/items/{product_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-wishlist"
+                ],
+                "summary": "Remove a product from the wishlist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/store/wishlist/items/{product_id}/move-to-cart": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "store-wishlist"
+                ],
+                "summary": "Move a wishlist product into the cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     }
                 }
@@ -3559,6 +4767,90 @@ const docTemplate = `{
                 }
             }
         },
+        "middleware.Activity": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "$ref": "#/definitions/middleware.ActivityType"
+                },
+                "data": {},
+                "date": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "userID": {
+                    "type": "string"
+                }
+            }
+        },
+        "middleware.ActivityType": {
+            "type": "string",
+            "enum": [
+                "login_success",
+                "login_failed",
+                "logout_success",
+                "logout_failed",
+                "register_success",
+                "register_failed",
+                "create_transaction",
+                "create_journal",
+                "close_journal",
+                "create_supplier",
+                "create_product",
+                "edit_transaction",
+                "edit_supplier",
+                "edit_product",
+                "delete_transaction",
+                "reopen_journal",
+                "delete_supplier",
+                "delete_product",
+                "close_sales_session",
+                "open_sales_session",
+                "product_income",
+                "product_transfer",
+                "create_operation",
+                "edit_operation",
+                "delete_operation",
+                "create_finance",
+                "edit_finance",
+                "delete_finance"
+            ],
+            "x-enum-varnames": [
+                "ActivityTypeLogin",
+                "ActivityTypeLoginFailed",
+                "ActivityTypeLogout",
+                "ActivityTypeLogoutFailed",
+                "ActivityTypeRegister",
+                "ActivityTypeRegisterFailed",
+                "ActivityTypeCreateTransaction",
+                "ActivityTypeCreateJournal",
+                "ActivityTypeCloseJournal",
+                "ActivityTypeCreateSupplier",
+                "ActivityTypeCreateProduct",
+                "ActivityTypeEditTransaction",
+                "ActivityTypeEditSupplier",
+                "ActivityTypeEditProduct",
+                "ActivityTypeDeleteTransaction",
+                "ActivityTypeReopenJournal",
+                "ActivityTypeDeleteSupplier",
+                "ActivityTypeDeleteProduct",
+                "ActivityTypeCloseSalesSession",
+                "ActivityTypeOpenSalesSession",
+                "ActivityTypeProductIncome",
+                "ActivityTypeProductTransfer",
+                "ActivityTypeCreateOperation",
+                "ActivityTypeEditOperation",
+                "ActivityTypeDeleteOperation",
+                "ActivityTypeCreateFinance",
+                "ActivityTypeEditFinance",
+                "ActivityTypeDeleteFinance"
+            ]
+        },
         "models.BNPL": {
             "type": "object",
             "properties": {
@@ -3620,6 +4912,23 @@ const docTemplate = `{
                 "BNPLStatusCancelled"
             ]
         },
+        "models.Balance": {
+            "type": "object",
+            "properties": {
+                "bank": {
+                    "type": "integer"
+                },
+                "cash": {
+                    "type": "integer"
+                },
+                "mobile_apps": {
+                    "type": "integer"
+                },
+                "terminal": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.Branch": {
             "type": "object",
             "properties": {
@@ -3637,6 +4946,36 @@ const docTemplate = `{
                 }
             }
         },
+        "models.BranchFinance": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "$ref": "#/definitions/models.Balance"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "debt": {
+                    "type": "integer"
+                },
+                "details": {},
+                "suppliers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total_expenses": {
+                    "type": "integer"
+                },
+                "total_income": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.CloseJournalEntryInput": {
             "type": "object",
             "properties": {
@@ -3645,6 +4984,49 @@ const docTemplate = `{
                 },
                 "terminal_income": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.Customer": {
+            "type": "object",
+            "properties": {
+                "additional_info": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "address": {
+                    "description": "Email   string ` + "`" + `json:\"email\" bson:\"email\"` + "`" + `",
+                    "type": "string"
+                },
+                "bnpls": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BNPL"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "purchase_history": {
+                    "description": "purchase history is updated when a customer a sales session or completes a BNPL session",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SalesSession"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -3669,6 +5051,43 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CustomerQueryOutput": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.CustomerQueryOutputData"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.CustomerQueryOutputData": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "customers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Customer"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.Error": {
             "type": "object",
             "properties": {
@@ -3677,6 +5096,70 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "models.ErrorOutput": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {}
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.FinancialData": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "total_expenses": {
+                    "type": "integer"
+                },
+                "total_income": {
+                    "type": "integer"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Transaction"
+                    }
+                }
+            }
+        },
+        "models.IncomeHistory": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "description": "Date of the income",
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Price of the product that was uploaded",
+                    "type": "integer"
+                },
+                "quantity": {
+                    "description": "Quantity of the product that was uploaded",
+                    "type": "integer"
+                },
+                "supplier_id": {
+                    "description": "Supplier ID",
+                    "type": "string"
+                },
+                "uploaded_to": {
+                    "description": "Place where the product was uploaded to",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.ProductPlace"
+                        }
+                    ]
                 }
             }
         },
@@ -3759,6 +5242,38 @@ const docTemplate = `{
                 }
             }
         },
+        "models.JournalWithTransactionID": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "$ref": "#/definitions/models.Branch"
+                },
+                "cash_left": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "shift_is_closed": {
+                    "type": "boolean"
+                },
+                "terminal_income": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.ManufacturerInfo": {
             "type": "object",
             "properties": {
@@ -3780,6 +5295,14 @@ const docTemplate = `{
                 },
                 "phone": {
                     "description": "Contact phone number",
+                    "type": "string"
+                }
+            }
+        },
+        "models.MessageResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }
@@ -3827,10 +5350,201 @@ const docTemplate = `{
                 }
             }
         },
-        "models.Output": {
+        "models.Output-array_middleware_Activity": {
             "type": "object",
             "properties": {
-                "data": {},
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/middleware.Activity"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-array_models_BNPL": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BNPL"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-array_models_BranchFinance": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BranchFinance"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-array_models_Customer": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Customer"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-array_models_Journal": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Journal"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-array_models_Product": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Product"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-array_models_Supplier": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Supplier"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_BNPL": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.BNPL"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_BranchFinance": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.BranchFinance"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_Journal": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.Journal"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_JournalWithTransactionID": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.JournalWithTransactionID"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_Supplier": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.Supplier"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_Transaction": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.Transaction"
+                },
                 "error": {
                     "type": "array",
                     "items": {
@@ -3859,6 +5573,79 @@ const docTemplate = `{
                 "OnlineTransfer",
                 "PaymentMethodUndefined"
             ]
+        },
+        "models.Product": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "description": "Product categories",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "created_at": {
+                    "description": "Creation timestamp",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Product description",
+                    "type": "string"
+                },
+                "general_income_price": {
+                    "description": "General income price of the product --- the price generally this item is bought from supplier",
+                    "type": "number"
+                },
+                "id": {
+                    "description": "Unique product identifier",
+                    "type": "string"
+                },
+                "images": {
+                    "description": "Product images (lins) saved to some S3",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "income_history": {
+                    "description": "Income history",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.IncomeHistory"
+                    }
+                },
+                "manufacturer": {
+                    "description": "Manufacturer details",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.ManufacturerInfo"
+                        }
+                    ]
+                },
+                "minimum_stock_alert": {
+                    "description": "Minimum stock alert",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Product name",
+                    "type": "string"
+                },
+                "quantity_distribution": {
+                    "description": "Stock levels by location",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProductDistribution"
+                    }
+                },
+                "sku": {
+                    "description": "Stock Keeping Unit",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "Last update timestamp",
+                    "type": "string"
+                }
+            }
         },
         "models.ProductBase": {
             "type": "object",
@@ -3900,6 +5687,31 @@ const docTemplate = `{
                 }
             }
         },
+        "models.ProductDistribution": {
+            "type": "object",
+            "properties": {
+                "place": {
+                    "description": "Location details",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.ProductPlace"
+                        }
+                    ]
+                },
+                "price": {
+                    "description": "Price of the product",
+                    "type": "integer"
+                },
+                "quantity": {
+                    "description": "Quantity of the product",
+                    "type": "integer"
+                },
+                "unit": {
+                    "description": "Unit of measurement (e.g. kg, pieces, etc)",
+                    "type": "string"
+                }
+            }
+        },
         "models.ProductPlace": {
             "type": "object",
             "properties": {
@@ -3932,6 +5744,50 @@ const docTemplate = `{
                 "ProductPlaceTypeWarehouse"
             ]
         },
+        "models.ProductProposal": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "fulfilled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image_file": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SalesSession": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "product_items": {
+                    "description": "product which are going to be sold",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/models.SalesSessionItem"
+                    }
+                }
+            }
+        },
         "models.SalesSessionItem": {
             "type": "object",
             "properties": {
@@ -3940,6 +5796,44 @@ const docTemplate = `{
                 },
                 "quantity": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.Supplier": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "financial_data": {
+                    "$ref": "#/definitions/models.FinancialData"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "inn": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -3965,6 +5859,32 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TokenResponse": {
+            "type": "object",
+            "properties": {
+                "aud": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "string"
+                },
+                "exp": {
+                    "type": "string"
+                },
+                "iat": {
+                    "type": "string"
+                },
+                "jti": {
+                    "type": "string"
+                },
+                "nbf": {
+                    "type": "string"
+                },
+                "sub": {
                     "type": "string"
                 }
             }
@@ -4061,16 +5981,13 @@ const docTemplate = `{
                 "TransactionTypeDebit"
             ]
         },
-        "models.User": {
+        "models.UserRegisterInput": {
             "type": "object",
             "properties": {
                 "branch": {
                     "type": "string"
                 },
                 "email": {
-                    "type": "string"
-                },
-                "id": {
                     "type": "string"
                 },
                 "password": {

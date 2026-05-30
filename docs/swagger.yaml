@@ -18,6 +18,80 @@ definitions:
     - password
     - username
     type: object
+  middleware.Activity:
+    properties:
+      action:
+        $ref: '#/definitions/middleware.ActivityType'
+      data: {}
+      date:
+        type: string
+      ip:
+        type: string
+      status:
+        type: integer
+      userID:
+        type: string
+    type: object
+  middleware.ActivityType:
+    enum:
+    - login_success
+    - login_failed
+    - logout_success
+    - logout_failed
+    - register_success
+    - register_failed
+    - create_transaction
+    - create_journal
+    - close_journal
+    - create_supplier
+    - create_product
+    - edit_transaction
+    - edit_supplier
+    - edit_product
+    - delete_transaction
+    - reopen_journal
+    - delete_supplier
+    - delete_product
+    - close_sales_session
+    - open_sales_session
+    - product_income
+    - product_transfer
+    - create_operation
+    - edit_operation
+    - delete_operation
+    - create_finance
+    - edit_finance
+    - delete_finance
+    type: string
+    x-enum-varnames:
+    - ActivityTypeLogin
+    - ActivityTypeLoginFailed
+    - ActivityTypeLogout
+    - ActivityTypeLogoutFailed
+    - ActivityTypeRegister
+    - ActivityTypeRegisterFailed
+    - ActivityTypeCreateTransaction
+    - ActivityTypeCreateJournal
+    - ActivityTypeCloseJournal
+    - ActivityTypeCreateSupplier
+    - ActivityTypeCreateProduct
+    - ActivityTypeEditTransaction
+    - ActivityTypeEditSupplier
+    - ActivityTypeEditProduct
+    - ActivityTypeDeleteTransaction
+    - ActivityTypeReopenJournal
+    - ActivityTypeDeleteSupplier
+    - ActivityTypeDeleteProduct
+    - ActivityTypeCloseSalesSession
+    - ActivityTypeOpenSalesSession
+    - ActivityTypeProductIncome
+    - ActivityTypeProductTransfer
+    - ActivityTypeCreateOperation
+    - ActivityTypeEditOperation
+    - ActivityTypeDeleteOperation
+    - ActivityTypeCreateFinance
+    - ActivityTypeEditFinance
+    - ActivityTypeDeleteFinance
   models.BNPL:
     properties:
       branch_id:
@@ -59,6 +133,17 @@ definitions:
     - BNPLStatusActive
     - BNPLStatusCompleted
     - BNPLStatusCancelled
+  models.Balance:
+    properties:
+      bank:
+        type: integer
+      cash:
+        type: integer
+      mobile_apps:
+        type: integer
+      terminal:
+        type: integer
+    type: object
   models.Branch:
     properties:
       id:
@@ -70,12 +155,62 @@ definitions:
       phone:
         type: string
     type: object
+  models.BranchFinance:
+    properties:
+      balance:
+        $ref: '#/definitions/models.Balance'
+      branch_id:
+        type: string
+      branch_name:
+        type: string
+      debt:
+        type: integer
+      details: {}
+      suppliers:
+        items:
+          type: string
+        type: array
+      total_expenses:
+        type: integer
+      total_income:
+        type: integer
+    type: object
   models.CloseJournalEntryInput:
     properties:
       cash_left:
         type: integer
       terminal_income:
         type: integer
+    type: object
+  models.Customer:
+    properties:
+      additional_info:
+        additionalProperties:
+          type: string
+        type: object
+      address:
+        description: Email   string `json:"email" bson:"email"`
+        type: string
+      bnpls:
+        items:
+          $ref: '#/definitions/models.BNPL'
+        type: array
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      purchase_history:
+        description: purchase history is updated when a customer a sales session or
+          completes a BNPL session
+        items:
+          $ref: '#/definitions/models.SalesSession'
+        type: array
+      updated_at:
+        type: string
     type: object
   models.CustomerBase:
     properties:
@@ -91,12 +226,78 @@ definitions:
       phone:
         type: string
     type: object
+  models.CustomerQueryOutput:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.CustomerQueryOutputData'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.CustomerQueryOutputData:
+    properties:
+      count:
+        type: integer
+      customers:
+        items:
+          $ref: '#/definitions/models.Customer'
+        type: array
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
   models.Error:
     properties:
       code:
         type: integer
       message:
         type: string
+    type: object
+  models.ErrorOutput:
+    properties:
+      data:
+        items: {}
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.FinancialData:
+    properties:
+      balance:
+        type: integer
+      total_expenses:
+        type: integer
+      total_income:
+        type: integer
+      transactions:
+        items:
+          $ref: '#/definitions/models.Transaction'
+        type: array
+    type: object
+  models.IncomeHistory:
+    properties:
+      date:
+        description: Date of the income
+        type: string
+      price:
+        description: Price of the product that was uploaded
+        type: integer
+      quantity:
+        description: Quantity of the product that was uploaded
+        type: integer
+      supplier_id:
+        description: Supplier ID
+        type: string
+      uploaded_to:
+        allOf:
+        - $ref: '#/definitions/models.ProductPlace'
+        description: Place where the product was uploaded to
     type: object
   models.InitiatorType:
     enum:
@@ -154,6 +355,27 @@ definitions:
       type:
         $ref: '#/definitions/models.TransactionType'
     type: object
+  models.JournalWithTransactionID:
+    properties:
+      branch:
+        $ref: '#/definitions/models.Branch'
+      cash_left:
+        type: integer
+      date:
+        type: string
+      id:
+        type: string
+      operations:
+        items:
+          type: string
+        type: array
+      shift_is_closed:
+        type: boolean
+      terminal_income:
+        type: integer
+      total:
+        type: integer
+    type: object
   models.ManufacturerInfo:
     properties:
       address:
@@ -170,6 +392,11 @@ definitions:
         type: string
       phone:
         description: Contact phone number
+        type: string
+    type: object
+  models.MessageResponse:
+    properties:
+      message:
         type: string
     type: object
   models.NewBNPLInput:
@@ -200,9 +427,132 @@ definitions:
       date:
         type: string
     type: object
-  models.Output:
+  models.Output-array_middleware_Activity:
     properties:
-      data: {}
+      data:
+        items:
+          $ref: '#/definitions/middleware.Activity'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_BNPL:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.BNPL'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_BranchFinance:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.BranchFinance'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Customer:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Customer'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Journal:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Journal'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Product:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Product'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Supplier:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Supplier'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_BNPL:
+    properties:
+      data:
+        $ref: '#/definitions/models.BNPL'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_BranchFinance:
+    properties:
+      data:
+        $ref: '#/definitions/models.BranchFinance'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Journal:
+    properties:
+      data:
+        $ref: '#/definitions/models.Journal'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_JournalWithTransactionID:
+    properties:
+      data:
+        $ref: '#/definitions/models.JournalWithTransactionID'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Supplier:
+    properties:
+      data:
+        $ref: '#/definitions/models.Supplier'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Transaction:
+    properties:
+      data:
+        $ref: '#/definitions/models.Transaction'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -226,6 +576,58 @@ definitions:
     - Cheque
     - OnlineTransfer
     - PaymentMethodUndefined
+  models.Product:
+    properties:
+      category:
+        description: Product categories
+        items:
+          type: string
+        type: array
+      created_at:
+        description: Creation timestamp
+        type: string
+      description:
+        description: Product description
+        type: string
+      general_income_price:
+        description: General income price of the product --- the price generally this
+          item is bought from supplier
+        type: number
+      id:
+        description: Unique product identifier
+        type: string
+      images:
+        description: Product images (lins) saved to some S3
+        items:
+          type: string
+        type: array
+      income_history:
+        description: Income history
+        items:
+          $ref: '#/definitions/models.IncomeHistory'
+        type: array
+      manufacturer:
+        allOf:
+        - $ref: '#/definitions/models.ManufacturerInfo'
+        description: Manufacturer details
+      minimum_stock_alert:
+        description: Minimum stock alert
+        type: integer
+      name:
+        description: Product name
+        type: string
+      quantity_distribution:
+        description: Stock levels by location
+        items:
+          $ref: '#/definitions/models.ProductDistribution'
+        type: array
+      sku:
+        description: Stock Keeping Unit
+        type: string
+      updated_at:
+        description: Last update timestamp
+        type: string
+    type: object
   models.ProductBase:
     properties:
       category:
@@ -254,6 +656,22 @@ definitions:
         description: Stock Keeping Unit
         type: string
     type: object
+  models.ProductDistribution:
+    properties:
+      place:
+        allOf:
+        - $ref: '#/definitions/models.ProductPlace'
+        description: Location details
+      price:
+        description: Price of the product
+        type: integer
+      quantity:
+        description: Quantity of the product
+        type: integer
+      unit:
+        description: Unit of measurement (e.g. kg, pieces, etc)
+        type: string
+    type: object
   models.ProductPlace:
     properties:
       id:
@@ -275,12 +693,66 @@ definitions:
     x-enum-varnames:
     - ProductPlaceTypeBranch
     - ProductPlaceTypeWarehouse
+  models.ProductProposal:
+    properties:
+      branch:
+        type: string
+      date:
+        type: string
+      fulfilled:
+        type: boolean
+      id:
+        type: string
+      image_file:
+        type: string
+      name:
+        type: string
+    type: object
+  models.SalesSession:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      product_items:
+        additionalProperties:
+          $ref: '#/definitions/models.SalesSessionItem'
+        description: product which are going to be sold
+        type: object
+    type: object
   models.SalesSessionItem:
     properties:
       price:
         type: integer
       quantity:
         type: integer
+    type: object
+  models.Supplier:
+    properties:
+      address:
+        type: string
+      branch:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      financial_data:
+        $ref: '#/definitions/models.FinancialData'
+      id:
+        type: string
+      inn:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.SupplierBase:
     properties:
@@ -297,6 +769,23 @@ definitions:
       notes:
         type: string
       phone:
+        type: string
+    type: object
+  models.TokenResponse:
+    properties:
+      aud:
+        type: string
+      data:
+        type: string
+      exp:
+        type: string
+      iat:
+        type: string
+      jti:
+        type: string
+      nbf:
+        type: string
+      sub:
         type: string
     type: object
   models.Transaction:
@@ -362,13 +851,11 @@ definitions:
     x-enum-varnames:
     - TransactionTypeCredit
     - TransactionTypeDebit
-  models.User:
+  models.UserRegisterInput:
     properties:
       branch:
         type: string
       email:
-        type: string
-      id:
         type: string
       password:
         type: string
@@ -413,10 +900,72 @@ info:
   title: G4H ERP/POS API
   version: "1.0"
 paths:
-  /api/activities/me:
-    get:
+  /api/sales/transactions/{branch_id}:
+    post:
       consumes:
       - application/json
+      description: Create a new sales transaction for a branch
+      parameters:
+      - description: Branch ID
+        in: path
+        name: branch_id
+        required: true
+        type: string
+      - description: Transaction details
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/models.TransactionBase'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Transaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Create a new sales transaction
+      tags:
+      - sales/transactions
+  /api/sales/transactions/{transaction_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a sales transaction by ID
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: transaction_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Transaction'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete a sales transaction
+      tags:
+      - sales/transactions
+  /api/v1/admin/activities/me:
+    get:
       description: Get the 25 most recent activities for the authenticated user
       produces:
       - application/json
@@ -424,20 +973,18 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_middleware_Activity'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get activities of current user
       tags:
       - auth
-  /api/activities/recent:
+  /api/v1/admin/activities/recent:
     get:
-      consumes:
-      - application/json
       description: Get the 25 most recent activities across all users
       produces:
       - application/json
@@ -445,20 +992,48 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_middleware_Activity'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get recent activities
       tags:
       - auth
-  /api/auth/me:
-    get:
+  /api/v1/admin/auth/login:
+    post:
       consumes:
       - application/json
+      description: Authenticate user and return a token
+      parameters:
+      - description: User credentials
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/auth.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: token
+          schema:
+            $ref: '#/definitions/models.TokenResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Login a user
+      tags:
+      - auth
+  /api/v1/admin/auth/me:
+    get:
       description: Get user info
       produces:
       - application/json
@@ -466,19 +1041,17 @@ paths:
         "200":
           description: message
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.MessageResponse'
         "500":
           description: Internal Server Error
           schema:
-            type: string
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get user info
       tags:
       - auth
-  /api/bnpl:
+  /api/v1/admin/bnpl:
     post:
       consumes:
       - application/json
@@ -496,24 +1069,22 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_BNPL'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create new BNPL
       tags:
       - BNPL
-  /api/bnpl/{id}:
+  /api/v1/admin/bnpl/{id}:
     delete:
-      consumes:
-      - application/json
       description: Delete an existing BNPL transaction
       parameters:
       - description: BNPL ID
@@ -527,21 +1098,17 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.MessageResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Delete BNPL
       tags:
       - BNPL
     get:
-      consumes:
-      - application/json
       description: Get details of a specific BNPL transaction
       parameters:
       - description: BNPL ID
@@ -555,17 +1122,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_BNPL'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get BNPL details
       tags:
       - BNPL
-  /api/bnpl/{id}/credit:
+  /api/v1/admin/bnpl/{id}/credit:
     post:
       consumes:
       - application/json
@@ -592,20 +1159,18 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.BNPL'
+            $ref: '#/definitions/models.Output-array_models_BNPL'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Credit BNPL payment
       tags:
       - BNPL
-  /api/branches/{branch_id}/bnpls:
+  /api/v1/admin/branches/{branch_id}/bnpls:
     get:
-      consumes:
-      - application/json
       description: Get all BNPL transactions for a specific branch
       parameters:
       - description: Branch ID
@@ -631,17 +1196,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Customer'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get BNPLs of branch
       tags:
       - BNPL
-  /api/customers:
+  /api/v1/admin/customers:
     get:
       consumes:
       - application/json
@@ -677,11 +1242,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.CustomerQueryOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get all customers
@@ -704,24 +1273,26 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Customer'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create a new customer
       tags:
       - customers
-  /api/customers/{customer_id}/bnpls:
+  /api/v1/admin/customers/{customer_id}/bnpls:
     get:
-      consumes:
-      - application/json
       description: Get all BNPL transactions for a specific customer
       parameters:
       - description: Customer ID
@@ -739,20 +1310,18 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_BNPL'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get customer BNPLs
       tags:
       - BNPL
-  /api/customers/{id}:
+  /api/v1/admin/customers/{id}:
     delete:
-      consumes:
-      - application/json
       description: Delete a customer from the database
       parameters:
       - description: Customer ID
@@ -766,23 +1335,25 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Delete a customer
       tags:
       - customers
     get:
-      consumes:
-      - application/json
       description: Get a customer by its ID
       parameters:
       - description: Customer ID
@@ -796,15 +1367,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Customer'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get a customer by ID
@@ -832,25 +1403,29 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Customer'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Update a customer
       tags:
       - customers
-  /api/finance:
+  /api/v1/admin/finance:
     post:
       consumes:
       - application/json
@@ -868,21 +1443,21 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_BranchFinance'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create new finance for a branch
       tags:
       - finance
-  /api/finance/branch/id/{id}:
+  /api/v1/admin/finance/branch/id/{id}:
     get:
       description: Retrieve a branch using its ID
       parameters:
@@ -897,17 +1472,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_BranchFinance'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Fetch branch by ID
       tags:
       - finance
-  /api/finance/branch/name/{branch_name}:
+  /api/v1/admin/finance/branch/name/{branch_name}:
     get:
       description: Retrieve finance details using the branch name
       parameters:
@@ -922,17 +1497,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_BranchFinance'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Fetch finance by branch name
       tags:
       - finance
-  /api/finance/branches:
+  /api/v1/admin/finance/branches:
     get:
       description: Retrieve all branches from the finance collection
       produces:
@@ -941,17 +1516,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_BranchFinance'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Fetch all branches
       tags:
       - finance
-  /api/finance/id/{id}:
+  /api/v1/admin/finance/id/{id}:
     get:
       description: Retrieve finance details using its ID --- ObjectID not branch_id
       parameters:
@@ -966,17 +1541,21 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_BranchFinance'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Fetch finance by ID
       tags:
       - finance
-  /api/journals:
+  /api/v1/admin/journals:
     post:
       consumes:
       - application/json
@@ -994,24 +1573,22 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Journal'
+            $ref: '#/definitions/models.Output-models_JournalWithTransactionID'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create a new journal entry
       tags:
       - journals
-  /api/journals/{journal_id}:
+  /api/v1/admin/journals/{journal_id}:
     get:
-      consumes:
-      - application/json
       description: Get a journal entry by its ID
       parameters:
       - description: Journal ID
@@ -1025,17 +1602,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Journal'
+            $ref: '#/definitions/models.Output-models_Journal'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get a journal entry by ID
       tags:
       - journals
-  /api/journals/{journal_id}/close:
+  /api/v1/admin/journals/{journal_id}/close:
     post:
       consumes:
       - application/json
@@ -1055,26 +1632,24 @@ paths:
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
-            items:
-              $ref: '#/definitions/models.Transaction'
-            type: array
+            $ref: '#/definitions/models.Output-models_Journal'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Close a journal entry
       tags:
       - journals
-  /api/journals/{journal_id}/operations:
+  /api/v1/admin/journals/{journal_id}/operations:
     post:
       consumes:
       - application/json
@@ -1094,27 +1669,25 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Created
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_Journal'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create a new operation transaction
       tags:
       - journals/operations
-  /api/journals/{journal_id}/operations/{id}:
+  /api/v1/admin/journals/{journal_id}/operations/{id}:
     delete:
-      consumes:
-      - application/json
       description: Delete an operation transaction by ID
       parameters:
       - description: Operation ID
@@ -1133,23 +1706,21 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
-        "400":
-          description: Bad Request
+            $ref: '#/definitions/models.Output-models_Journal'
+        "404":
+          description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Delete an operation transaction
       tags:
       - journals/operations
     get:
-      consumes:
-      - application/json
       description: Get an operation transaction by ID
       parameters:
       - description: Operation ID
@@ -1168,23 +1739,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_Transaction'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get an operation transaction by ID
       tags:
       - journals/operations
     put:
-      consumes:
-      - application/json
       description: Update an operation transaction by ID
       parameters:
       - description: Operation ID
@@ -1212,24 +1777,26 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_Journal'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Update an operation transaction
       tags:
       - journals/operations
-  /api/journals/{journal_id}/reopen:
+  /api/v1/admin/journals/{journal_id}/reopen:
     post:
-      consumes:
-      - application/json
       description: Reopen a journal entry by removing its closing transactions
       parameters:
       - description: Journal ID
@@ -1243,22 +1810,22 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/models.Transaction'
-            type: array
+            $ref: '#/definitions/models.Output-models_Journal'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Reopen a closed journal entry
       tags:
       - journals
-  /api/journals/branch/{branch_id}:
+  /api/v1/admin/journals/branch/{branch_id}:
     get:
-      consumes:
-      - application/json
       description: Query journal entries by branch ID
       parameters:
       - description: Branch ID
@@ -1280,35 +1847,41 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/models.Journal'
-            type: array
+            $ref: '#/definitions/models.Output-array_models_Journal'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Error'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Query journal entries
       tags:
       - journals
-  /api/journals/report:
+  /api/v1/admin/journals/report:
     get:
-      consumes:
-      - application/json
       description: Get a report of journal entries
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MessageResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get a report
       tags:
       - journals
-  /api/products:
+  /api/v1/admin/products:
     get:
-      consumes:
-      - application/json
       description: Query products based on various parameters
       parameters:
       - description: Branch ID
@@ -1333,15 +1906,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Product'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Query products
@@ -1364,24 +1937,22 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Product'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create a new product
       tags:
       - products
-  /api/products/{id}:
+  /api/v1/admin/products/{id}:
     delete:
-      consumes:
-      - application/json
       description: Deletes a product and its related data
       parameters:
       - description: Product ID
@@ -1395,19 +1966,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Product'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Delete a product
       tags:
       - products
     get:
-      consumes:
-      - application/json
       description: Retrieves a product by its ID
       parameters:
       - description: Product ID
@@ -1421,11 +1990,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Product'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get a product by ID
@@ -1453,21 +2022,21 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Product'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Edit a product
       tags:
       - products
-  /api/products/{id}/income:
+  /api/v1/admin/products/{id}/income:
     post:
       consumes:
       - application/json
@@ -1490,25 +2059,25 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Product'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Add new income for a product
       tags:
       - products
-  /api/products/{product_id}/images:
+  /api/v1/admin/products/{product_id}/images:
     get:
       description: Returns a list of image URLs for a given product
       parameters:
@@ -1523,7 +2092,11 @@ paths:
         "200":
           description: OK
           schema:
-            type: string
+            additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -1558,7 +2131,9 @@ paths:
         "200":
           description: OK
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -1572,7 +2147,7 @@ paths:
       summary: Upload a product image
       tags:
       - products
-  /api/products/{product_id}/images/{key}:
+  /api/v1/admin/products/{product_id}/images/{key}:
     delete:
       description: Deletes a product image from S3 and removes reference from database
       parameters:
@@ -1606,7 +2181,7 @@ paths:
       summary: Delete a product image
       tags:
       - products
-  /api/products/images/{key}:
+  /api/v1/admin/products/images/{key}:
     get:
       description: Returns the image file for a given image key
       parameters:
@@ -1635,23 +2210,27 @@ paths:
       summary: Get a single product image
       tags:
       - products
-  /api/products/transfer:
+  /api/v1/admin/products/transfer:
     post:
-      consumes:
-      - application/json
       description: Transfers product quantity from one location to another
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Product'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Transfer product between locations
       tags:
       - products
-  /api/proposals:
+  /api/v1/admin/proposals:
     get:
-      consumes:
-      - application/json
       description: Retrieves all proposals with optional filters
       parameters:
       - description: Filter by name (case-insensitive)
@@ -1682,30 +2261,23 @@ paths:
           description: List of proposals
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/models.ProductProposal'
             type: array
         "400":
           description: Invalid date format
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Failed to fetch or decode proposals
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get all proposals
       tags:
       - proposals
-  /api/proposals/delete:
+  /api/v1/admin/proposals/delete:
     delete:
-      consumes:
-      - application/json
       description: Deletes a proposal record and its associated image file
       parameters:
       - description: Proposal ID
@@ -1723,30 +2295,22 @@ paths:
         "400":
           description: Invalid proposal ID
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Proposal not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Failed to delete proposal
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Delete proposal
       tags:
       - proposals
-  /api/proposals/detail:
+  /api/v1/admin/proposals/detail:
     get:
-      consumes:
-      - application/json
       description: Retrieves detailed information for a specific proposal record
       parameters:
       - description: Proposal ID
@@ -1764,25 +2328,20 @@ paths:
         "400":
           description: Invalid proposal ID
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Proposal not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get proposal detail
       tags:
       - proposals
-  /api/proposals/edit:
+  /api/v1/admin/proposals/edit:
     put:
       consumes:
       - application/json
-      - application/x-www-form-urlencoded
       description: Updates an existing proposal record
       parameters:
       - description: Proposal ID
@@ -1805,24 +2364,18 @@ paths:
         "400":
           description: Invalid proposal ID or request data
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Failed to update proposal
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Edit proposal
       tags:
       - proposals
-  /api/proposals/fulfill:
+  /api/v1/admin/proposals/fulfill:
     get:
-      consumes:
-      - application/json
       description: Marks multiple proposals as fulfilled for a specific branch
       parameters:
       - description: Branch name
@@ -1841,29 +2394,22 @@ paths:
         "200":
           description: Fulfillment result
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.MessageResponse'
         "400":
           description: Invalid branch or no valid IDs provided
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Failed to fulfill proposals
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Fulfill proposals
       tags:
       - proposals
-  /api/proposals/image:
+  /api/v1/admin/proposals/image:
     get:
-      consumes:
-      - application/json
       description: Retrieves the image upload page for a specific proposal record
       parameters:
       - description: Proposal ID
@@ -1881,15 +2427,11 @@ paths:
         "400":
           description: Invalid proposal ID
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Proposal not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get image upload page by proposal ID
@@ -1920,30 +2462,22 @@ paths:
         "400":
           description: Invalid proposal ID or no file uploaded
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Proposal not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Failed to save file or update proposal
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Upload image for proposal
       tags:
       - proposals
-  /api/proposals/images:
+  /api/v1/admin/proposals/images:
     get:
-      consumes:
-      - application/json
       description: Retrieves an image file by its name
       parameters:
       - description: Image name
@@ -1961,15 +2495,13 @@ paths:
         "404":
           description: Image not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get image by name
       tags:
       - proposals
-  /api/proposals/new:
+  /api/v1/admin/proposals/new:
     post:
       consumes:
       - application/json
@@ -1994,29 +2526,22 @@ paths:
         "200":
           description: Proposals created successfully
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.MessageResponse'
         "400":
           description: Invalid branch or request body
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Failed to create proposals
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create new proposals
       tags:
       - proposals
-  /api/proposals/pdf/pdf:
+  /api/v1/admin/proposals/pdf/pdf:
     get:
-      consumes:
-      - application/json
       description: Generates a PDF document with unfulfilled proposals
       produces:
       - application/json
@@ -2024,84 +2549,17 @@ paths:
         "200":
           description: PDF generation result with proposals data
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.MessageResponse'
         "500":
           description: Failed to fetch or decode proposals
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Generate PDF
       tags:
       - proposals
-  /api/sales/transactions/{branch_id}:
-    post:
-      consumes:
-      - application/json
-      description: Create a new sales transaction for a branch
-      parameters:
-      - description: Branch ID
-        in: path
-        name: branch_id
-        required: true
-        type: string
-      - description: Transaction details
-        in: body
-        name: transaction
-        required: true
-        schema:
-          $ref: '#/definitions/models.TransactionBase'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.Output'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/models.Output'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/models.Output'
-      security:
-      - BearerAuth: []
-      summary: Create a new sales transaction
-      tags:
-      - sales/transactions
-  /api/sales/transactions/{transaction_id}:
-    delete:
-      consumes:
-      - application/json
-      description: Delete a sales transaction by ID
-      parameters:
-      - description: Transaction ID
-        in: path
-        name: transaction_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Output'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/models.Output'
-      security:
-      - BearerAuth: []
-      summary: Delete a sales transaction
-      tags:
-      - sales/transactions
-  /api/suppliers:
+  /api/v1/admin/suppliers:
     get:
       consumes:
       - application/json
@@ -2141,11 +2599,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-array_models_Supplier'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get all suppliers
@@ -2168,25 +2626,25 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_Supplier'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create a new supplier
       tags:
       - suppliers
-  /api/suppliers/{branch_id}/{supplier_id}/transactions:
+  /api/v1/admin/suppliers/{branch_id}/{supplier_id}/transactions:
     post:
       consumes:
       - application/json
@@ -2214,22 +2672,22 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_Transaction'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Create a new transaction for a supplier
       tags:
       - suppliers
       - transactions
-  /api/suppliers/{id}:
+  /api/v1/admin/suppliers/{id}:
     delete:
       consumes:
       - application/json
@@ -2246,15 +2704,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.MessageResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Delete a supplier
@@ -2276,15 +2734,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.Output-models_Supplier'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Get a supplier by ID
@@ -2312,25 +2770,25 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.MessageResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/models.Output'
+            $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
       summary: Update a supplier
       tags:
       - suppliers
-  /api/transactions/{id}:
+  /api/v1/admin/transactions/{id}:
     delete:
       consumes:
       - application/json
@@ -2399,7 +2857,7 @@ paths:
       summary: Update a transaction by ID
       tags:
       - transactions
-  /api/transactions/{transaction_id}:
+  /api/v1/admin/transactions/{transaction_id}:
     get:
       consumes:
       - application/json
@@ -2426,7 +2884,7 @@ paths:
       summary: Get a transaction by ID
       tags:
       - transactions
-  /api/transactions/branch/{branch_id}:
+  /api/v1/admin/transactions/branch/{branch_id}:
     get:
       consumes:
       - application/json
@@ -2497,7 +2955,7 @@ paths:
       summary: Get transactions by query parameters
       tags:
       - transactions
-  /api/transactions/docs/initiator_type:
+  /api/v1/admin/transactions/docs/initiator_type:
     get:
       consumes:
       - application/json
@@ -2516,7 +2974,7 @@ paths:
       summary: Get all initiator types
       tags:
       - transactions
-  /api/transactions/docs/payment_method:
+  /api/v1/admin/transactions/docs/payment_method:
     get:
       consumes:
       - application/json
@@ -2535,7 +2993,7 @@ paths:
       summary: Get all payment methods
       tags:
       - transactions
-  /api/transactions/docs/type:
+  /api/v1/admin/transactions/docs/type:
     get:
       consumes:
       - application/json
@@ -2554,64 +3012,825 @@ paths:
       summary: Get all transaction types
       tags:
       - transactions
-  /auth/login:
-    post:
-      consumes:
-      - application/json
-      description: Authenticate user and return a token
-      parameters:
-      - description: User credentials
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/auth.LoginInput'
+  /api/v1/store/account/addresses:
+    get:
       produces:
       - application/json
       responses:
-        "200":
-          description: token
+        "501":
+          description: Not Implemented
           schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            type: string
-        "500":
-          description: Internal Server Error
-          schema:
-            type: string
-      summary: Login a user
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List the customer's saved addresses
       tags:
-      - auth
-  /auth/register:
+      - store-account
     post:
-      consumes:
-      - application/json
-      description: Create a new user account
-      parameters:
-      - description: User credentials
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/models.User'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "501":
+          description: Not Implemented
           schema:
-            type: string
-        "500":
-          description: Internal Server Error
-          schema:
-            type: string
-      summary: Register a new user
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Add a new address to the customer's address book
       tags:
-      - auth
+      - store-account
+  /api/v1/store/account/addresses/{address_id}:
+    delete:
+      parameters:
+      - description: Address ID
+        in: path
+        name: address_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete an address
+      tags:
+      - store-account
+    put:
+      parameters:
+      - description: Address ID
+        in: path
+        name: address_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update an address
+      tags:
+      - store-account
+  /api/v1/store/account/addresses/{address_id}/default:
+    put:
+      parameters:
+      - description: Address ID
+        in: path
+        name: address_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Mark an address as the default
+      tags:
+      - store-account
+  /api/v1/store/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a storefront customer and return a token
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Login a storefront customer
+      tags:
+      - store-auth
+  /api/v1/store/auth/logout:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Logout the current storefront customer
+      tags:
+      - store-auth
+  /api/v1/store/auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get current storefront customer profile
+      tags:
+      - store-auth
+    put:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update current storefront customer profile
+      tags:
+      - store-auth
+  /api/v1/store/auth/password/forgot:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Request a password reset
+      tags:
+      - store-auth
+  /api/v1/store/auth/password/reset:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Reset a password with a reset token
+      tags:
+      - store-auth
+  /api/v1/store/auth/refresh:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Refresh a storefront access token
+      tags:
+      - store-auth
+  /api/v1/store/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new storefront customer account
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Register a storefront customer
+      tags:
+      - store-auth
+  /api/v1/store/cart:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Empty the cart
+      tags:
+      - store-cart
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get the current customer's cart
+      tags:
+      - store-cart
+  /api/v1/store/cart/items:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Add an item to the cart
+      tags:
+      - store-cart
+  /api/v1/store/cart/items/{item_id}:
+    delete:
+      parameters:
+      - description: Cart item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Remove an item from the cart
+      tags:
+      - store-cart
+    put:
+      parameters:
+      - description: Cart item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a cart item's quantity
+      tags:
+      - store-cart
+  /api/v1/store/cart/promo:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Remove the applied coupon from the cart
+      tags:
+      - store-cart
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Apply a coupon code to the cart
+      tags:
+      - store-cart
+  /api/v1/store/catalog/brands:
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: List brands / manufacturers
+      tags:
+      - store-catalog
+  /api/v1/store/catalog/categories:
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: List catalog categories
+      tags:
+      - store-catalog
+  /api/v1/store/catalog/categories/{id}:
+    get:
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get a category by id
+      tags:
+      - store-catalog
+  /api/v1/store/catalog/categories/{id}/products:
+    get:
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: List products in a category
+      tags:
+      - store-catalog
+  /api/v1/store/catalog/search:
+    get:
+      description: Full-text search with filters, facets, sort and pagination
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Search the catalog
+      tags:
+      - store-catalog
+  /api/v1/store/checkout/preview:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Preview checkout totals (items, shipping, tax) before placing an order
+      tags:
+      - store-orders
+  /api/v1/store/orders:
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List the customer's orders
+      tags:
+      - store-orders
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Place an order from the current cart
+      tags:
+      - store-orders
+  /api/v1/store/orders/{id}:
+    get:
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get an order by id
+      tags:
+      - store-orders
+  /api/v1/store/orders/{id}/cancel:
+    post:
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Cancel an order
+      tags:
+      - store-orders
+  /api/v1/store/orders/{id}/reorder:
+    post:
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Re-add the items of a past order to the cart
+      tags:
+      - store-orders
+  /api/v1/store/orders/{id}/status:
+    get:
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get an order's status / tracking
+      tags:
+      - store-orders
+  /api/v1/store/products:
+    get:
+      description: List products with filter/sort/pagination
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: List storefront products
+      tags:
+      - store-products
+  /api/v1/store/products/{id}:
+    get:
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get a storefront product by id
+      tags:
+      - store-products
+  /api/v1/store/products/{id}/availability:
+    get:
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get a product's stock availability per branch
+      tags:
+      - store-products
+  /api/v1/store/products/{id}/images:
+    get:
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get a product's images
+      tags:
+      - store-products
+  /api/v1/store/products/{id}/related:
+    get:
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get related / recommended products
+      tags:
+      - store-products
+  /api/v1/store/products/{id}/reviews:
+    get:
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: List reviews for a product (public)
+      tags:
+      - store-products
+    post:
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Create a review for a product
+      tags:
+      - store-reviews
+  /api/v1/store/promotions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: List active promotions / banners
+      tags:
+      - store-promotions
+  /api/v1/store/promotions/{id}:
+    get:
+      parameters:
+      - description: Promotion ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get a promotion by id
+      tags:
+      - store-promotions
+  /api/v1/store/promotions/coupons/{code}:
+    get:
+      parameters:
+      - description: Coupon code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Look up a coupon's terms by code
+      tags:
+      - store-promotions
+  /api/v1/store/promotions/validate:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Validate a coupon against the current cart / customer
+      tags:
+      - store-promotions
+  /api/v1/store/reviews/{id}:
+    delete:
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete the caller's own review
+      tags:
+      - store-reviews
+    put:
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update the caller's own review
+      tags:
+      - store-reviews
+  /api/v1/store/reviews/{id}/vote:
+    post:
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Vote a review helpful / unhelpful
+      tags:
+      - store-reviews
+  /api/v1/store/wishlist:
+    get:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get the current customer's wishlist
+      tags:
+      - store-wishlist
+  /api/v1/store/wishlist/items:
+    post:
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Add a product to the wishlist
+      tags:
+      - store-wishlist
+  /api/v1/store/wishlist/items/{product_id}:
+    delete:
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Remove a product from the wishlist
+      tags:
+      - store-wishlist
+  /api/v1/store/wishlist/items/{product_id}/move-to-cart:
+    post:
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Move a wishlist product into the cart
+      tags:
+      - store-wishlist
   /proposals:
     delete:
       description: Configures proxy routes based on server configuration to forward

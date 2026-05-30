@@ -72,9 +72,10 @@ func (query *CustomerQuery) SetDefaults() {
 // @Param page query int false "Page number"
 // @Param count query int false "Number of customers per page"
 // @Param sort_by_bnpl_total query string false "Sort by BNPL total (max, min, none)"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/customers [get]
+// @Success 200 {object} models.CustomerQueryOutput
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/customers [get]
 func (ctrl *CustomersController) GetCustomers(c *fiber.Ctx) error {
 	var query CustomerQuery
 	if err := c.QueryParser(&query); err != nil {
@@ -184,13 +185,12 @@ func (ctrl *CustomersController) GetCustomers(c *fiber.Ctx) error {
 // @Summary Get a customer by ID
 // @Description Get a customer by its ID
 // @Tags customers
-// @Accept json
 // @Produce json
 // @Param id path string true "Customer ID"
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/customers/{id} [get]
+// @Success 200 {object} models.Output[[]models.Customer]
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/customers/{id} [get]
 func (ctrl *CustomersController) GetCustomerByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Getting customer by ID")
@@ -224,10 +224,11 @@ func (ctrl *CustomersController) GetCustomerByID(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param customer body models.CustomerBase true "Customer data"
-// @Success 201 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/customers [post]
+// @Success 201 {object} models.Output[[]models.Customer]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 409 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/customers [post]
 func (ctrl *CustomersController) CreateCustomer(c *fiber.Ctx) error {
 	log.Debug().Msg("Creating new customer")
 
@@ -296,11 +297,12 @@ func (ctrl *CustomersController) CreateCustomer(c *fiber.Ctx) error {
 // @Produce json
 // @Param id path string true "Customer ID"
 // @Param customer body models.CustomerBase true "Customer data"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/customers/{id} [put]
+// @Success 200 {object} models.Output[[]models.Customer]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 409 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/customers/{id} [put]
 func (ctrl *CustomersController) UpdateCustomer(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Updating customer")
@@ -399,13 +401,13 @@ func (ctrl *CustomersController) UpdateCustomer(c *fiber.Ctx) error {
 // @Summary Delete a customer
 // @Description Delete a customer from the database
 // @Tags customers
-// @Accept json
 // @Produce json
 // @Param id path string true "Customer ID"
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/customers/{id} [delete]
+// @Success 200 {object} models.MessageResponse
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/customers/{id} [delete]
 func (ctrl *CustomersController) DeleteCustomer(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Deleting customer")

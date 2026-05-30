@@ -40,9 +40,9 @@ func New(db *mongo.Database) *SalesTransactionsController {
 // @Produce json
 // @Param branch_id path string true "Branch ID"
 // @Param transaction body models.TransactionBase true "Transaction details"
-// @Success 201 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
+// @Success 201 {object} models.Output[models.Transaction]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
 // @Router /api/sales/transactions/{branch_id} [post]
 func (s *SalesTransactionsController) CreateSalesTransaction(c *fiber.Ctx) error {
 	branch_id := c.Params("branch_id")
@@ -148,8 +148,8 @@ func NewTransaction(ctx context.Context, transaction_base models.TransactionBase
 // @Accept json
 // @Produce json
 // @Param transaction_id path string true "Transaction ID"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output
+// @Success 200 {object} models.Output[models.Transaction]
+// @Failure 500 {object} models.ErrorOutput
 // @Router /api/sales/transactions/{transaction_id} [delete]
 func (s *SalesTransactionsController) DeleteSalesTransaction(c *fiber.Ctx) error {
 	transaction_id := c.Params("transaction_id")

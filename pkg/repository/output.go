@@ -12,21 +12,29 @@ type Error struct {
 	Code    int    `json:"code"`
 }
 
-type Output struct {
-	Data  interface{} `json:"data"`
-	Error []Error     `json:"error"`
+// Output is the standard response envelope. T is the type of the Data payload,
+// so callers get a typed body instead of an untyped interface{}.
+type Output[T any] struct {
+	Data  T       `json:"data"`
+	Error []Error `json:"error"`
 }
 
-func NewOutput(data interface{}, errors ...Error) map[string]interface{} {
+// NewOutput builds a success envelope around data of any type T. T is inferred
+// from the argument, so call sites need no type annotation (e.g.
+// NewOutput([]Product{...}) yields Output[[]Product]).
+func NewOutput[T any](data T, errors ...Error) Output[T] {
+	return Output[T]{
+		Data:  data,
+		Error: errors,
+	}
+}
 
-	// if data == nil || reflect.ValueOf(data).IsNil() {
-	// 	data = []interface{}{}
-	// 	log.Info().Msg("Data is nil, setting to empty array")
-	// }
-
-	return map[string]interface{}{
-		"data":  data,
-		"error": errors,
+// NewErrorOutput builds an envelope with no data payload, only errors. Use this
+// instead of NewOutput(nil, ...) — an untyped nil cannot drive type inference.
+func NewErrorOutput(errors ...Error) Output[any] {
+	return Output[any]{
+		Data:  nil,
+		Error: errors,
 	}
 }
 
@@ -49,15 +57,22 @@ func NewErrors(errors ...error) []Error {
 
 func AbortTransactionAndReturnError(ctx context.Context, session *mongo.Session, c *fiber.Ctx, err error) error {
 
-	return c.Status(fiber.StatusInternalServerError).JSON(NewOutput(nil, Error{
+	return c.Status(fiber.StatusInternalServerError).JSON(NewErrorOutput(Error{
 		Message: err.Error(),
 		Code:    fiber.StatusInternalServerError,
 	}))
 }
 
 func ReturnError(c *fiber.Ctx, err error) error {
-	return c.Status(fiber.StatusInternalServerError).JSON(NewOutput(nil, Error{
+	return c.Status(fiber.StatusInternalServerError).JSON(NewErrorOutput(Error{
 		Message: err.Error(),
 		Code:    fiber.StatusInternalServerError,
 	}))
+}
+
+// NotImplemented is a placeholder response for stubbed-out handlers. It returns
+// HTTP 501 in the standard Output envelope so routes are reachable and testable
+// before their business logic is written.
+func NotImplemented(c *fiber.Ctx) error {
+	return c.Status(fiber.StatusNotImplemented).JSON(NewErrorOutput(NewError("not implemented", fiber.StatusNotImplemented)))
 }

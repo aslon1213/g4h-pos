@@ -23,10 +23,10 @@ import (
 // @Param branch_id path string true "Branch ID"
 // @Param supplier_id path string true "Supplier ID"
 // @Param transaction body models.TransactionBase true "Transaction data"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/suppliers/{branch_id}/{supplier_id}/transactions [post]
+// @Success 200 {object} models.Output[models.Transaction]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/suppliers/{branch_id}/{supplier_id}/transactions [post]
 func (s *SuppliersController) NewTransaction(c *fiber.Ctx) error {
 	// if suppliers gets money, that is when we payed money to them,
 	// so we need to add money to the supplier's balance and decrease the debt of the branch also decrease the balance of the branch

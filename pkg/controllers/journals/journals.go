@@ -67,12 +67,11 @@ func New(db *mongo.Database) *JournalHandlers {
 // @Summary Get a journal entry by ID
 // @Description Get a journal entry by its ID
 // @Tags journals
-// @Accept json
 // @Produce json
 // @Param journal_id path string true "Journal ID"
-// @Success 200 {object} models.Journal
-// @Failure 500 {object} models.Error
-// @Router /api/journals/{journal_id} [get]
+// @Success 200 {object} models.Output[models.Journal]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id} [get]
 func (j *JournalHandlers) GetJournalEntryByID(c *fiber.Ctx) error {
 	// log.Info().Msg("Fetching journal entry by ID")
 	journal, err := j.FetchJournalByID(j.ctx, c, true)
@@ -93,14 +92,14 @@ func (j *JournalHandlers) GetJournalEntryByID(c *fiber.Ctx) error {
 // @Summary Query journal entries
 // @Description Query journal entries by branch ID
 // @Tags journals
-// @Accept json
 // @Produce json
 // @Param branch_id path string true "Branch ID"
 // @Param page query int false "Page number"
 // @Param page_size query int false "Page size"
-// @Success 200 {array} models.Journal
-// @Failure 500 {object} models.Error
-// @Router /api/journals/branch/{branch_id} [get]
+// @Success 200 {object} models.Output[[]models.Journal]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/branch/{branch_id} [get]
 func (j *JournalHandlers) QueryJournalEntries(c *fiber.Ctx) error {
 	ctx, span := j.Tracer.Start(j.ctx, "query_journal_entries")
 	defer span.End()
@@ -203,10 +202,10 @@ func QueryJournals(span trace.Span, ctx context.Context, c *fiber.Ctx, queryPara
 // @Accept json
 // @Produce json
 // @Param input body models.NewJournalEntryInput true "New Journal Entry Input"
-// @Success 201 {object} models.Journal
-// @Failure 400 {object} models.Error
-// @Failure 500 {object} models.Error
-// @Router /api/journals [post]
+// @Success 201 {object} models.Output[models.JournalWithTransactionID]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals [post]
 func (j *JournalHandlers) NewJournalEntry(c *fiber.Ctx) error {
 	log.Info().Msg("Creating new journal entry")
 	input := models.NewJournalEntryInput{}
@@ -279,10 +278,10 @@ func (j *JournalHandlers) NewJournalEntry(c *fiber.Ctx) error {
 // @Produce json
 // @Param journal_id path string true "Journal ID"
 // @Param input body models.CloseJournalEntryInput true "Close Journal Entry Input"
-// @Success 201 {array} models.Transaction
-// @Failure 400 {object} models.Error
-// @Failure 500 {object} models.Error
-// @Router /api/journals/{journal_id}/close [post]
+// @Success 200 {object} models.Output[models.Journal]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id}/close [post]
 func (j *JournalHandlers) CloseJournalEntry(c *fiber.Ctx) error {
 	log.Info().Msg("Closing journal entry")
 	journalID, err := ParseJournalID(c)
@@ -422,12 +421,12 @@ func (j *JournalHandlers) FetchJournalByID(ctx context.Context, c *fiber.Ctx, fe
 // @Summary Reopen a closed journal entry
 // @Description Reopen a journal entry by removing its closing transactions
 // @Tags journals
-// @Accept json
 // @Produce json
 // @Param journal_id path string true "Journal ID"
-// @Success 200 {array} models.Transaction
-// @Failure 500 {object} models.Error
-// @Router /api/journals/{journal_id}/reopen [post]
+// @Success 200 {object} models.Output[models.Journal]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id}/reopen [post]
 func (j *JournalHandlers) ReOpenJournalEntry(c *fiber.Ctx) error {
 	log.Info().Msg("Reopening journal entry")
 	// start a db transaction
@@ -541,9 +540,10 @@ func ParseJournalID(c *fiber.Ctx) (bson.ObjectID, error) {
 // @Summary Get a report
 // @Description Get a report of journal entries
 // @Tags journals
-// @Accept json
 // @Produce json
-// @Router /api/journals/report [get]
+// @Success 200 {object} models.MessageResponse
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/report [get]
 func (j *JournalHandlers) GetReport(c *fiber.Ctx) error {
 	log.Info().Msg("Generating report")
 	panic("Not implemented")

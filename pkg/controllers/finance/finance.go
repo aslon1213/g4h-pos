@@ -46,9 +46,9 @@ func New(db *mongo.Database) *FinanceController {
 // @Description Retrieve all branches from the finance collection
 // @Tags finance
 // @Produce json
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/finance/branches [get]
+// @Success 200 {object} models.Output[[]models.BranchFinance]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/finance/branches [get]
 func (f *FinanceController) GetBranches(c *fiber.Ctx) error {
 	log.Debug().Msg("Fetching all branches")
 	cursor, err := f.FinanceCollection.Find(context.Background(), bson.M{})
@@ -83,9 +83,9 @@ func (f *FinanceController) GetBranches(c *fiber.Ctx) error {
 // @Tags finance
 // @Param id path string true "Branch ID"
 // @Produce json
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Router /api/finance/branch/id/{id} [get]
+// @Success 200 {object} models.Output[models.BranchFinance]
+// @Failure 404 {object} models.ErrorOutput
+// @Router /api/v1/admin/finance/branch/id/{id} [get]
 func (f *FinanceController) GetFinanceBranchByBranchID(c *fiber.Ctx) error {
 	branchID := c.Params("id")
 	log.Debug().Str("branch_id", branchID).Msg("Fetching branch by ID")
@@ -109,9 +109,9 @@ func (f *FinanceController) GetFinanceBranchByBranchID(c *fiber.Ctx) error {
 // @Tags finance
 // @Param branch_name path string true "Branch Name"
 // @Produce json
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Router /api/finance/branch/name/{branch_name} [get]
+// @Success 200 {object} models.Output[models.BranchFinance]
+// @Failure 404 {object} models.ErrorOutput
+// @Router /api/v1/admin/finance/branch/name/{branch_name} [get]
 func (f *FinanceController) GetFinanceByBranchName(c *fiber.Ctx) error {
 	branchName := c.Params("branch_name")
 	log.Debug().Str("branch_name", branchName).Msg("Fetching finance by branch name")
@@ -140,10 +140,10 @@ func (f *FinanceController) GetFinanceByBranchName(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param branch body models.NewBranchFinanceInput true "Branch finance input"
-// @Success 201 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/finance [post]
+// @Success 201 {object} models.Output[models.BranchFinance]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/finance [post]
 func (f *FinanceController) NewFinanceOfBranch(c *fiber.Ctx) error {
 	log.Debug().Msg("Creating new finance for branch")
 	var Input models.NewBranchFinanceInput
@@ -190,9 +190,10 @@ func (f *FinanceController) NewFinanceOfBranch(c *fiber.Ctx) error {
 // @Tags finance
 // @Param id path string true "Finance ID"
 // @Produce json
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Router /api/finance/id/{id} [get]
+// @Success 200 {object} models.Output[models.BranchFinance]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Router /api/v1/admin/finance/id/{id} [get]
 func (f *FinanceController) GetFinanceByID(c *fiber.Ctx) error {
 	financeID := c.Params("id")
 	log.Debug().Str("id", financeID).Msg("Fetching finance by ID")

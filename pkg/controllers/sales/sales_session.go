@@ -19,7 +19,7 @@ package sales
 // // @Accept json
 // // @Produce json
 // // @Param branch_id path string true "Branch ID"
-// // @Success 200 {object} models.Output
+// // @Success 200 {object} models.Output[any]
 // // @Router /api/sales/session/branch/{branch_id} [post]
 // func (s *SalesTransactionsController) OpenSalesSession(c *fiber.Ctx) error {
 // 	branch_id := c.Params("branch_id")
@@ -59,9 +59,9 @@ package sales
 // // @Produce json
 // // @Param session_id path string true "Session ID"
 // // @Param product body AddProductItemToSessionInput true "Product details"
-// // @Success 200 {object} models.Output
-// // @Failure 400 {object} models.Output
-// // @Failure 500 {object} models.Output
+// // @Success 200 {object} models.Output[any]
+// // @Failure 400 {object} models.ErrorOutput
+// // @Failure 500 {object} models.ErrorOutput
 // // @Router /api/sales/session/{session_id}/product [post]
 // func (s *SalesTransactionsController) AddProductItemToSession(c *fiber.Ctx) error {
 // 	session_id := c.Params("session_id")
@@ -118,8 +118,8 @@ package sales
 // // @Accept json
 // // @Produce json
 // // @Param session_id path string true "Session ID"
-// // @Success 200 {object} models.Output
-// // @Failure 500 {object} models.Output
+// // @Success 200 {object} models.Output[any]
+// // @Failure 500 {object} models.ErrorOutput
 // // @Router /api/sales/session/{session_id}/close [post]
 // func (s *SalesTransactionsController) CloseSalesSession(c *fiber.Ctx) error {
 // 	session_id := c.Params("session_id")
@@ -178,10 +178,10 @@ package sales
 // // @Accept json
 // // @Produce json
 // // @Param session_id path string true "Session ID"
-// // @Success 200 {object} models.Output
-// // @Failure 400 {object} models.Output
-// // @Failure 404 {object} models.Output
-// // @Failure 500 {object} models.Output
+// // @Success 200 {object} models.Output[any]
+// // @Failure 400 {object} models.ErrorOutput
+// // @Failure 404 {object} models.ErrorOutput
+// // @Failure 500 {object} models.ErrorOutput
 // // @Router /api/sales/session/{session_id} [get]
 // func (s *SalesTransactionsController) GetSalesSession(c *fiber.Ctx) error {
 // 	session_id := c.Params("session_id")
@@ -209,10 +209,10 @@ package sales
 // // @Accept json
 // // @Produce json
 // // @Param branch_id path string true "Branch ID"
-// // @Success 200 {object} models.Output
-// // @Failure 400 {object} models.Output
-// // @Failure 404 {object} models.Output
-// // @Failure 500 {object} models.Output
+// // @Success 200 {object} models.Output[any]
+// // @Failure 400 {object} models.ErrorOutput
+// // @Failure 404 {object} models.ErrorOutput
+// // @Failure 500 {object} models.ErrorOutput
 // // @Router /api/sales/session/branch/{branch_id} [get]
 // func (s *SalesTransactionsController) GetSalesSessionsOfBranch(c *fiber.Ctx) error {
 // 	branch_id := c.Params("branch_id")
@@ -240,10 +240,10 @@ package sales
 // // @Accept json
 // // @Produce json
 // // @Param session_id path string true "Session ID"
-// // @Success 200 {object} models.Output
-// // @Failure 400 {object} models.Output
-// // @Failure 404 {object} models.Output
-// // @Failure 500 {object} models.Output
+// // @Success 200 {object} models.Output[any]
+// // @Failure 400 {object} models.ErrorOutput
+// // @Failure 404 {object} models.ErrorOutput
+// // @Failure 500 {object} models.ErrorOutput
 // // @Router /api/sales/session/{session_id} [delete]
 // func (s *SalesTransactionsController) DeleteSalesSession(c *fiber.Ctx) error {
 // 	session_id := c.Params("session_id")

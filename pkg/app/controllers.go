@@ -13,6 +13,7 @@ import (
 	journal_handlers "github.com/aslon1213/g4h_pos_erp/pkg/controllers/journals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/products"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/sales"
+	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/store"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/suppliers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/transactions"
 	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
@@ -37,6 +38,7 @@ type Controllers struct {
 	Middlewares  *middleware.Middlewares
 	Dashboard    *analytics.DashboardHandler
 	Proposals    *arrivals.ProposalsHandlers
+	Store        *store.Controllers
 }
 
 func NewControllers(db *mongo.Database) *Controllers {
@@ -56,6 +58,7 @@ func NewControllers(db *mongo.Database) *Controllers {
 		Middlewares:  middleware,
 		Dashboard:    analytics.New(db),
 		Proposals:    arrivals.New(db),
+		Store:        store.New(db),
 	}
 	log.Debug().Msg("Controllers initialized successfully")
 	return controllers
@@ -71,6 +74,27 @@ func SetupRoutes(app *fiber.App, controllers *Controllers) {
 	if err != nil {
 		log.Fatal().Err(err).Msg("invalid symmetric key")
 	}
+
+	// Public routes must be registered BEFORE the /api token guard below, so the
+	// PASETO middleware does not apply to them (e.g. login can't require a token).
+	routes.PublicAuthRoutes(app, controllers.Auth, controllers.Middlewares)
+	log.Debug().Msg("Public auth routes set up successfully")
+
+	// Storefront API (/api/v1/store). These are registered before the staff /api
+	// guard so they do NOT inherit the staff (users-collection) auth. Public store
+	// routes get no guard; protected ones get their own customer-token guard below.
+	routes.StorePublicRoutes(app, controllers.Store, controllers.Middlewares)
+	log.Debug().Msg("Store public routes set up successfully")
+
+	app.Group("/api/v1/store", pasetoware.New(
+		pasetoware.Config{
+			SymmetricKey:   keyBytes,
+			SuccessHandler: controllers.Middlewares.CustomerAuthMiddleware,
+		},
+	))
+	routes.StoreProtectedRoutes(app, controllers.Store, controllers.Middlewares)
+	log.Debug().Msg("Store protected routes set up successfully")
+
 	app.Group("/api", pasetoware.New(
 		pasetoware.Config{
 			SymmetricKey: keyBytes,

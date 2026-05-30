@@ -52,10 +52,10 @@ func NewOperationsHandler(db *mongo.Database) *OperationHandlers {
 // @Produce json
 // @Param transaction body models.JournalOperationInput true "Transaction data"
 // @Param journal_id path string true "Journal ID"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/journals/{journal_id}/operations [post]
+// @Success 201 {object} models.Output[models.Journal]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id}/operations [post]
 func (o *OperationHandlers) NewOperationTransaction(c *fiber.Ctx) error {
 	transaction := models.JournalOperationInput{}
 	if err := c.BodyParser(&transaction); err != nil {
@@ -197,16 +197,16 @@ func (o *OperationHandlers) ShiftIsOpenMiddleware(c *fiber.Ctx) error {
 // @Summary Update an operation transaction
 // @Description Update an operation transaction by ID
 // @Tags journals/operations
-// @Accept json
 // @Produce json
 // @Param id path string true "Operation ID"
 // @Param journal_id path string true "Journal ID"
 // @Param amount query int true "Amount"
 // @Param description query string false "Description"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/journals/{journal_id}/operations/{id} [put]
+// @Success 200 {object} models.Output[models.Journal]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id}/operations/{id} [put]
 func (o *OperationHandlers) UpdateOperationTransactionByID(c *fiber.Ctx) error {
 	// log handler
 	log.Info().Str("operation_id", c.Params("operation_id")).Msg("Updating operation transaction by ID")
@@ -326,14 +326,13 @@ func (o *OperationHandlers) UpdateOperationTransactionByID(c *fiber.Ctx) error {
 // @Summary Delete an operation transaction
 // @Description Delete an operation transaction by ID
 // @Tags journals/operations
-// @Accept json
 // @Produce json
 // @Param id path string true "Operation ID"
 // @Param journal_id path string true "Journal ID"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/journals/{journal_id}/operations/{id} [delete]
+// @Success 200 {object} models.Output[models.Journal]
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id}/operations/{id} [delete]
 func (o *OperationHandlers) DeleteOperationTransactionByID(c *fiber.Ctx) error {
 	// log activity
 	log.Info().Str("operation_id", c.Params("operation_id")).Msg("Deleting operation transaction by ID")
@@ -429,14 +428,12 @@ func (o *OperationHandlers) DeleteOperationTransactionByID(c *fiber.Ctx) error {
 // @Summary Get an operation transaction by ID
 // @Description Get an operation transaction by ID
 // @Tags journals/operations
-// @Accept json
 // @Produce json
 // @Param id path string true "Operation ID"
 // @Param journal_id path string true "Journal ID"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/journals/{journal_id}/operations/{id} [get]
+// @Success 200 {object} models.Output[models.Transaction]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/journals/{journal_id}/operations/{id} [get]
 func (o *OperationHandlers) GetOperationTransactionByID(c *fiber.Ctx) error {
 	// log activity
 

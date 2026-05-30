@@ -47,15 +47,15 @@ func New(db *mongo.Database) *TransactionsController {
 // @Success 200 {object} models.TransactionOutput
 // @Failure 400 {object} models.Error
 // @Failure 500 {object} models.Error
-// @Router /api/transactions/branch/{branch_id} [get]
+// @Router /api/v1/admin/transactions/branch/{branch_id} [get]
 func (s *TransactionsController) GetTransactionsByQueryParams(c *fiber.Ctx) error {
 	s.logger.Info().Msg("GetTransactionsByQueryParams called")
 	branch_id := c.Params("branch_id")
 	if branch_id == "" {
 		s.logger.Warn().Msg("branch_id is required but not provided")
 		return c.Status(401).JSON(
-			models.NewOutput(
-				nil, models.NewError(
+			models.NewErrorOutput(
+				models.NewError(
 					"branch_id is required",
 					fiber.StatusBadRequest,
 				),
@@ -149,7 +149,7 @@ func (s *TransactionsController) GetTransactionsByQueryParams(c *fiber.Ctx) erro
 // @Param transaction_id path string true "Transaction ID"
 // @Success 200 {object} models.TransactionOutputSingle
 // @Failure 500 {object} models.Error
-// @Router /api/transactions/{transaction_id} [get]
+// @Router /api/v1/admin/transactions/{transaction_id} [get]
 func (t *TransactionsController) GetTransactionByID(c *fiber.Ctx) error {
 	t.logger.Info().Msg("GetTransactionByID called")
 	transaction_id := c.Params("id")
@@ -179,7 +179,7 @@ func (t *TransactionsController) GetTransactionByID(c *fiber.Ctx) error {
 // @Param type query string false "Type of transaction"
 // @Success 200 {object} map[string]string "message" : "transaction was succesfully updated"
 // @Failure 500 {object} models.Error
-// @Router /api/transactions/{id} [put]
+// @Router /api/v1/admin/transactions/{id} [put]
 func (t *TransactionsController) UpdateTransactionByID(c *fiber.Ctx) error {
 	t.logger.Info().Msg("UpdateTransactionByID called")
 	idx := c.Params("id")
@@ -227,7 +227,7 @@ func (t *TransactionsController) UpdateTransactionByID(c *fiber.Ctx) error {
 // @Param id path string true "Transaction ID"
 // @Success 200 {object} map[string]string "message" : "transaction was succesfully deleted"
 // @Failure 500 {object} models.Error
-// @Router /api/transactions/{id} [delete]
+// @Router /api/v1/admin/transactions/{id} [delete]
 func (t *TransactionsController) DeleteTransactionByID(c *fiber.Ctx) error {
 	t.logger.Info().Msg("DeleteTransactionByID called")
 	panic("not implemented")
@@ -259,7 +259,7 @@ func (t *TransactionsController) DeleteTransactionByID(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Success 200 {array} models.InitiatorType
-// @Router /api/transactions/docs/initiator_type [get]
+// @Router /api/v1/admin/transactions/docs/initiator_type [get]
 func (t *TransactionsController) GetInitiatorType(c *fiber.Ctx) error {
 	t.logger.Info().Msg("GetInitiatorType called")
 	types := []models.InitiatorType{
@@ -281,7 +281,7 @@ func (t *TransactionsController) GetInitiatorType(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Success 200 {array} models.TransactionType
-// @Router /api/transactions/docs/type [get]
+// @Router /api/v1/admin/transactions/docs/type [get]
 func (t *TransactionsController) GetTransactionType(c *fiber.Ctx) error {
 	t.logger.Info().Msg("GetTransactionType called")
 	types := []models.TransactionType{
@@ -299,7 +299,7 @@ func (t *TransactionsController) GetTransactionType(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Success 200 {array} models.PaymentMethod
-// @Router /api/transactions/docs/payment_method [get]
+// @Router /api/v1/admin/transactions/docs/payment_method [get]
 func (t *TransactionsController) GetPaymentMethod(c *fiber.Ctx) error {
 	t.logger.Info().Msg("GetPaymentMethod called")
 	methods := []models.PaymentMethod{
