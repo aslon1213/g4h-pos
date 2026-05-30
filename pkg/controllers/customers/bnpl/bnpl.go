@@ -38,10 +38,10 @@ func New(db *mongo.Database) *BNPLController {
 // @Accept json
 // @Produce json
 // @Param input body models.NewBNPLInput true "BNPL input"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Error
-// @Failure 500 {object} models.Error
-// @Router /api/bnpl [post]
+// @Success 200 {object} models.Output[[]models.BNPL]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/bnpl [post]
 func (ctrl *BNPLController) NewBNPL(c *fiber.Ctx) error {
 	log.Info().Msg("Creating new BNPL")
 
@@ -119,9 +119,9 @@ func (ctrl *BNPLController) NewBNPL(c *fiber.Ctx) error {
 // @Param id path string true "BNPL ID"
 // @Param amount query int true "Payment amount"
 // @Param payment_method query string false "Payment method" default(cash)
-// @Success 200 {object} models.BNPL
-// @Failure 500 {object} models.Error
-// @Router /api/bnpl/{id}/credit [post]
+// @Success 200 {object} models.Output[[]models.BNPL]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/bnpl/{id}/credit [post]
 func (ctrl *BNPLController) CreditBNPL(c *fiber.Ctx) error {
 	log.Info().Msg("Processing BNPL credit payment")
 
@@ -259,12 +259,11 @@ func (ctrl *BNPLController) CreditBNPL(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Description Delete an existing BNPL transaction
 // @Tags BNPL
-// @Accept json
 // @Produce json
 // @Param id path string true "BNPL ID"
-// @Success 200 {object} map[string]string
-// @Failure 500 {object} models.Error
-// @Router /api/bnpl/{id} [delete]
+// @Success 200 {object} models.MessageResponse
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/bnpl/{id} [delete]
 func (ctrl *BNPLController) DeleteBNPL(c *fiber.Ctx) error {
 	log.Info().Msg("Deleting BNPL")
 
@@ -300,12 +299,11 @@ func (ctrl *BNPLController) DeleteBNPL(c *fiber.Ctx) error {
 // @Security BearerAuth
 // @Description Get details of a specific BNPL transaction
 // @Tags BNPL
-// @Accept json
 // @Produce json
 // @Param id path string true "BNPL ID"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Error
-// @Router /api/bnpl/{id} [get]
+// @Success 200 {object} models.Output[models.BNPL]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/bnpl/{id} [get]
 func (ctrl *BNPLController) GetBNPLByID(c *fiber.Ctx) error {
 	log.Info().Msg("Getting BNPL details")
 
@@ -375,13 +373,12 @@ func GetBNPLByIDFromDB(ctx context.Context, bnpl_id string, customersCollection 
 // @Security BearerAuth
 // @Description Get all BNPL transactions for a specific customer
 // @Tags BNPL
-// @Accept json
 // @Produce json
 // @Param customer_id path string true "Customer ID"
 // @Param branch_id query string false "Branch ID"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Error
-// @Router /api/customers/{customer_id}/bnpls [get]
+// @Success 200 {object} models.Output[[]models.BNPL]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/customers/{customer_id}/bnpls [get]
 func (ctrl *BNPLController) GetBNPLSofCustomer(c *fiber.Ctx) error {
 	log.Info().Msg("Getting customer BNPLs")
 	branch_id := c.Query("branch_id")
@@ -405,20 +402,19 @@ func (ctrl *BNPLController) GetBNPLSofCustomer(c *fiber.Ctx) error {
 	return c.JSON(models.NewOutput(customer.BNPLs))
 }
 
-// Get BNPLs of branch
+// GetBNPLsOfBranch godoc
 // @Summary Get BNPLs of branch
 // @Security BearerAuth
 // @Description Get all BNPL transactions for a specific branch
 // @Tags BNPL
-// @Accept json
 // @Produce json
 // @Param branch_id path string true "Branch ID"
 // @Param customer_name query string false "Customer name"
 // @Param customer_phone query string false "Customer phone"
 // @Param customer_address query string false "Customer address"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Error
-// @Router /api/branches/{branch_id}/bnpls [get]
+// @Success 200 {object} models.Output[[]models.Customer]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/branches/{branch_id}/bnpls [get]
 func (ctrl *BNPLController) GetBNPLsOfBranch(c *fiber.Ctx) error {
 	log.Info().Msg("Getting BNPLs of branch")
 

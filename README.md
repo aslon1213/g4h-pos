@@ -5,7 +5,18 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/aslon1213/g4h_pos_erp?style=flat-square)](https://golang.org/)
 [![License](https://img.shields.io/github/license/aslon1213/g4h_pos_erp?style=flat-square)](LICENSE)
 
-A modern Point of Sale (POS) and Enterprise Resource Planning (ERP) system built with Go, designed for retail businesses and stores.
+A Point of Sale (POS) and ERP backend built with Go for retail operations.
+
+## Latest Changes (May 2026)
+
+- All staff endpoints moved under a versioned **`/api/v1/admin/*`** namespace (auth, suppliers, products, journals, finance, transactions, customers, bnpl, proposals). Admin `login` stays public; `register` is disabled.
+- Added a public **storefront API** under **`/api/v1/store/*`** (customer auth, catalog, products, cart, wishlist, orders, reviews, promotions) with a dedicated `CustomerAuthMiddleware` (validates the `store_customers` collection). Phase-1 stubs — see `docs/storefront-implementation-guide.md`.
+- Response envelope is now the **generic `Output[T]`**; error responses use `ErrorOutput`. Swaggo annotations are typed per endpoint.
+
+Earlier:
+
+- Auth token handling decodes `server.secret_symmetric_key` from Base64 before creating/verifying PASETO tokens.
+- Config loading supports explicit environment variable bindings (via Viper) with optional `.env` loading using `LOAD_DOT_ENV`.
 
 ## 🚀 Features
 
@@ -27,10 +38,10 @@ A modern Point of Sale (POS) and Enterprise Resource Planning (ERP) system built
 - **Database**: MongoDB
 - **Cache**: Redis
 - **Documentation**: Swagger/OpenAPI
-- **Authentication**: JWT/BasicAuth
+- **Authentication**: PASETO (Bearer token) + BasicAuth (docs/dashboard)
 - **Observability**: OpenTelemetry
 - **Logging**: Zerolog
-- **Configuration**: Viper (YAML-based)
+- **Configuration**: Viper (YAML + environment overrides)
 
 ## 📋 Prerequisites
 
@@ -53,8 +64,8 @@ A modern Point of Sale (POS) and Enterprise Resource Planning (ERP) system built
 2. **Prepare configuration**
 
    ```bash
-   cp example.config.yaml config.yaml
-   # Edit config.yaml to match your MongoDB/Redis/S3 settings
+   cp example.config.yaml config.local.yaml
+   # Edit config.local.yaml to match your MongoDB/Redis/S3/settings
    ```
 
 3. **Create required docker networks (first run only)**
@@ -90,13 +101,13 @@ A modern Point of Sale (POS) and Enterprise Resource Planning (ERP) system built
 
 2. **Setup MongoDB**
 
-   - Use an existing MongoDB replica set, or update `config.yaml` to point to your MongoDB URL. Ensure `replica_set` aligns with your cluster if replication is enabled.
+   - Use an existing MongoDB replica set, or update your active config file (`config.local.yaml` by default, `config.yaml` in production) to point to your MongoDB URL. Ensure `replica_set` aligns with your cluster if replication is enabled.
 
 3. **Configure the application**
 
    ```bash
-   cp example.config.yaml config.yaml
-   # Edit config.yaml with your database and Redis settings
+   cp example.config.yaml config.local.yaml
+   # Edit config.local.yaml with your database and Redis settings
    ```
 
 4. **Run the application**
@@ -106,7 +117,20 @@ A modern Point of Sale (POS) and Enterprise Resource Planning (ERP) system built
 
 ## ⚙️ Configuration
 
-The application uses YAML configuration. Copy `example.config.yaml` to `config.yaml` and modify as needed:
+The app loads config in this order:
+
+- If `ENVIRONMENT=production`: uses `config.yaml`
+- Otherwise: uses `config.local.yaml` (or `CONFIG_FILE` if set, e.g. `CONFIG_FILE=config.staging`)
+- If `LOAD_DOT_ENV` is set (non-empty), `.env` is loaded
+- Bound environment variables override matching YAML keys
+
+Start from:
+
+```bash
+cp example.config.yaml config.local.yaml
+```
+
+YAML shape:
 
 ```yaml
 database:
@@ -131,26 +155,61 @@ server:
   port: ":12000"
 ```
 
+### Environment Variables (Supported Bindings)
+
+The config loader binds these env vars:
+
+- Database: `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `DATABASE_NAME`, `DATABASE_MAX_CONNECTIONS`, `DATABASE_MIN_POOL_SIZE`, `DATABASE_AUTH`, `DATABASE_REPLICA_SET`, `DATABASE_URL`
+- Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DATABASE`
+- Server: `SERVER_HOST`, `SERVER_PORT`, `SERVER_SECRET_SYMMETRIC_KEY`, `SERVER_TOKEN_EXPIRY_HOURS`
+- S3: `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_IMAGE_BUCKET`
+
+### Auth Key Requirement
+
+`server.secret_symmetric_key` is Base64-decoded at runtime for PASETO middleware and token creation. Use a Base64-encoded 32-byte key, for example:
+
+```bash
+openssl rand -base64 32
+```
+
 ## 📖 API Documentation
 
-Once the application is running, access the Swagger documentation at:
+Once the application is running, access Swagger at:
 
 ```
 http://localhost:12000/docs/index.html
 ```
 
-Note: Access to `/docs` is protected with BasicAuth. Default credentials are configured in `config.yaml` under `server.admin_docs_users`.
+Note: Access to `/docs` is protected with BasicAuth. Credentials are configured in `server.admin_docs_users` in your active config file.
 
-The API provides endpoints for:
+The API is split into an **admin/staff** tree and a public **storefront** tree.
 
-- `/sales` - Sales transactions
-- `/products` - Product management
-- `/customers` - Customer management
-- `/suppliers` - Supplier management
-- `/transactions` - Financial transactions
-- `/journals` - Journal entries
-- `/expenses` - Internal expenses
-- `/finance` - Financial operations
+**Admin / staff — `/api/v1/admin/*`** (PASETO bearer token against the `users` collection):
+
+- `/api/v1/admin/auth/login` (public), `/api/v1/admin/auth/me`, `/api/v1/admin/activities/*`
+- `/api/v1/admin/products/*` - product catalog, stock ops, images
+- `/api/v1/admin/customers/*` - customers
+- `/api/v1/admin/suppliers/*` - suppliers and supplier transactions
+- `/api/v1/admin/transactions/*` - transaction queries/updates/docs enums
+- `/api/v1/admin/finance/*` - branch finance
+- `/api/v1/admin/journals/*` - journal lifecycle and operations
+- `/api/v1/admin/bnpl/*`, `/api/v1/admin/branches/:branch_id/bnpls`, `/api/v1/admin/customers/:customer_id/bnpls`
+- `/api/v1/admin/proposals/*` and `/proposals` (proxy route)
+
+**Storefront — `/api/v1/store/*`** (public browse + customer PASETO token against `store_customers`):
+
+- `/api/v1/store/auth/*` (register/login public; me/logout protected), `/api/v1/store/account/addresses/*`
+- `/api/v1/store/catalog/*`, `/api/v1/store/products/*` - public catalog & product browse + reviews
+- `/api/v1/store/cart/*`, `/api/v1/store/wishlist/*`, `/api/v1/store/orders/*`, `/api/v1/store/checkout/*` - customer-only
+- `/api/v1/store/reviews/*`, `/api/v1/store/promotions/*`
+
+**Still under `/api`:** `/api/sales/transactions/*`.
+
+Notes:
+
+- Storefront endpoints are **Phase-1 stubs** (return HTTP 501 `not implemented`); routing and customer auth are wired, business logic is pending. See `docs/storefront-implementation-guide.md`.
+- The admin `register` endpoint and `/api/sales/session/*` are disabled/commented out.
+- Responses use a generic envelope `Output[T]` → `{ "data": <T>, "error": [] }`; errors use `ErrorOutput`.
 
 ## 🔧 Development
 
@@ -162,16 +221,17 @@ The API provides endpoints for:
 ├── pkg/                            # Application packages
 │   ├── app/                        # Main application logic
 │   ├── controllers/                # Business logic controllers
-│   │   ├── customers/              # Customer management
+│   │   ├── customers/              # Customer management (+ bnpl/)
 │   │   ├── finance/                # Financial operations
 │   │   ├── internalExpenses/       # Internal expenses
 │   │   ├── journals/               # Journal entries for daily financial operations
 │   │   ├── products/               # Product management
 │   │   ├── sales/                  # Sales transactions
 │   │   ├── suppliers/              # Supplier management
-│   │   └── transactions/           # Financial transactions
-│   ├── routes/                     # API route definitions
-│   ├── middleware/                 # HTTP middleware
+│   │   ├── transactions/           # Financial transactions
+│   │   └── store/                  # Storefront API (auth, cart, catalog, orders, ...)
+│   ├── routes/                     # API route definitions (routes.go, store.go)
+│   ├── middleware/                 # HTTP middleware (staff + customer auth)
 │   ├── repository/                 # Data access layer, models
 │   ├── utils/                      # Utility functions
 │   └── configs/                    # Configuration management
@@ -201,7 +261,8 @@ go test ./test
 ### Generate Swagger Documentation
 
 ```bash
-swag init -g app/app.go --dir pkg
+# Run from the repo root (the older --dir pkg,routes,app flags are stale)
+swag init -g cmd/main.go
 ```
 
 ## 🐳 Docker Deployment

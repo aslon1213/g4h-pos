@@ -43,10 +43,10 @@ func New(db *mongo.Database) *ProductsController {
 // @Accept json
 // @Produce json
 // @Param product body models.ProductBase true "Product details"
-// @Success 201 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/products [post]
+// @Success 201 {object} models.Output[[]models.Product]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/products [post]
 func (p *ProductsController) CreateProduct(c *fiber.Ctx) error {
 	_, span := otel.Tracer("products").Start(c.Context(), "create_product")
 	defer span.End()
@@ -93,10 +93,10 @@ func (p *ProductsController) CreateProduct(c *fiber.Ctx) error {
 // @Produce json
 // @Param id path string true "Product ID"
 // @Param product body models.ProductBase true "Product details to update"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/products/{id} [put]
+// @Success 200 {object} models.Output[[]models.Product]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/products/{id} [put]
 func (p *ProductsController) EditProduct(c *fiber.Ctx) error {
 	_, span := otel.Tracer("products").Start(c.Context(), "edit_product")
 	defer span.End()
@@ -189,12 +189,11 @@ func (p *ProductsController) EditProduct(c *fiber.Ctx) error {
 // @Summary Delete a product
 // @Description Deletes a product and its related data
 // @Tags products
-// @Accept json
 // @Produce json
 // @Param id path string true "Product ID"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/products/{id} [delete]
+// @Success 200 {object} models.Output[[]models.Product]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/products/{id} [delete]
 func (p *ProductsController) DeleteProduct(c *fiber.Ctx) error {
 	_, span := otel.Tracer("products").Start(c.Context(), "delete_product")
 	defer span.End()
@@ -231,12 +230,11 @@ func (p *ProductsController) DeleteProduct(c *fiber.Ctx) error {
 // @Summary Get a product by ID
 // @Description Retrieves a product by its ID
 // @Tags products
-// @Accept json
 // @Produce json
 // @Param id path string true "Product ID"
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Router /api/products/{id} [get]
+// @Success 200 {object} models.Output[[]models.Product]
+// @Failure 404 {object} models.ErrorOutput
+// @Router /api/v1/admin/products/{id} [get]
 func (p *ProductsController) GetProductByID(c *fiber.Ctx) error {
 	_, span := otel.Tracer("products").Start(c.Context(), "get_product_by_id")
 	defer span.End()
@@ -265,16 +263,15 @@ func (p *ProductsController) GetProductByID(c *fiber.Ctx) error {
 // @Summary Query products
 // @Description Query products based on various parameters
 // @Tags products
-// @Accept json
 // @Produce json
 // @Param branch_id query string false "Branch ID"
 // @Param sku query string false "SKU"
 // @Param price_min query number false "Minimum price"
 // @Param price_max query number false "Maximum price"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/products [get]
+// @Success 200 {object} models.Output[[]models.Product]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/products [get]
 func (p *ProductsController) QueryProducts(c *fiber.Ctx) error {
 	_, span := otel.Tracer("products").Start(c.Context(), "query_products")
 	defer span.End()

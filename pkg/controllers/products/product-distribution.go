@@ -30,11 +30,11 @@ type NewIncomeInput struct {
 // @Produce json
 // @Param id path string true "Product ID"
 // @Param input body NewIncomeInput true "Income details"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/products/{id}/income [post]
+// @Success 200 {object} models.Output[[]models.Product]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/products/{id}/income [post]
 func (p *ProductsController) NewIncome(c *fiber.Ctx) error {
 	log.Info().Msg("Starting new income process")
 
@@ -211,9 +211,10 @@ func AppendQuantityDistribution(ctx context.Context, input NewIncomeInput, produ
 // @Summary Transfer product between locations
 // @Description Transfers product quantity from one location to another
 // @Tags products
-// @Accept json
 // @Produce json
-// @Router /api/products/transfer [post]
+// @Success 200 {object} models.Output[[]models.Product]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/products/transfer [post]
 func (p *ProductsController) NewTransfer(c *fiber.Ctx) error {
 
 	// log activity

@@ -48,17 +48,23 @@ func DashboardRoutes(router *fiber.App, dashboardController *analytics.Dashboard
 	// dashboard.Get("/branches")
 }
 
+// PublicAuthRoutes registers auth endpoints that must stay OUTSIDE the PASETO
+// token guard. It MUST be called before the /api group middleware is registered
+// in SetupRoutes, otherwise these routes would require a token to reach.
+func PublicAuthRoutes(router *fiber.App, authController *auth.AuthControllers, middleware *middleware.Middlewares) {
+	router.Post("/api/v1/admin/auth/login", authController.Login) // login -- public, activity logged here if succesfull
+	// router.Post("/api/v1/admin/auth/register", authController.Register) // register -- disabled
+}
+
 func AuthRoutes(router *fiber.App, authController *auth.AuthControllers, middleware *middleware.Middlewares) {
-	auth := router.Group("/auth")
-	auth.Post("/login", authController.Login)                                // login -- activity logged here if succesfull
-	auth.Post("/register", authController.Register)                          // register -- activity logged here if succesfull
-	router.Get("/api/auth/me", authController.InfoMe)                        // get user info
-	router.Get("/api/activities/recent", authController.GetRecentActivities) // get recent activities
-	router.Get("/api/activities/me", authController.GetActivitesOfUser)      // get activities of user
+	api := router.Group("/api/v1/admin")
+	api.Get("/auth/me", authController.InfoMe)                         // get user info
+	api.Get("/activities/recent", authController.GetRecentActivities) // get recent activities
+	api.Get("/activities/me", authController.GetActivitesOfUser)      // get activities of user
 }
 
 func SuppliersRoutes(router *fiber.App, suppliersController *suppliers.SuppliersController, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Get("/suppliers", suppliersController.GetSuppliers)                                         // get all suppliers
 	api.Get("/suppliers/:id", suppliersController.GetSupplierByID)                                  // get supplier by id
 	api.Post("/suppliers", suppliersController.CreateSupplier)                                      // create supplier -- activity logged here if succesfull                                   // create supplier
@@ -83,7 +89,7 @@ func SalesRoutes(router *fiber.App, salesController *sales.SalesTransactionsCont
 }
 
 func ProductsRoutes(router *fiber.App, productsController *products.ProductsController, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 
 	api.Post("/products", productsController.CreateProduct)                        // create product -- activity logged here if succesfull
 	api.Put("/products/:id", productsController.EditProduct)                       // edit product -- activity logged here if succesfull
@@ -99,7 +105,7 @@ func ProductsRoutes(router *fiber.App, productsController *products.ProductsCont
 }
 
 func JournalsRoutes(router *fiber.App, journalsController *journal_handlers.JournalHandlers, operationsController *journal_handlers.OperationHandlers, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Get("/journals/:id", journalsController.GetJournalEntryByID)                                                  // get journal entry by id
 	api.Get("/journals/branch/:branch_id", journalsController.QueryJournalEntries)                                    // query journal entries
 	api.Post("/journals", journalsController.NewJournalEntry)                                                         // create journal entry -- activity logged here if succesfull
@@ -119,7 +125,7 @@ func InternalExpensesRoutes(router *fiber.App, middleware *middleware.Middleware
 }
 
 func FinanceRoutes(router *fiber.App, financeController *finance.FinanceController, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Get("/finance/branches", financeController.GetBranches)                            // get all branches
 	api.Get("/finance/branch/id/:id", financeController.GetFinanceBranchByBranchID)        // get branch by id
 	api.Get("/finance/branch/name/:branch_name", financeController.GetFinanceByBranchName) // get branch by name
@@ -129,7 +135,7 @@ func FinanceRoutes(router *fiber.App, financeController *finance.FinanceControll
 }
 
 func TransactionsRoutes(router *fiber.App, transactionsController *transactions.TransactionsController, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Get("/transactions/branch/:branch_id", transactionsController.GetTransactionsByQueryParams) // get transactions by query params
 	api.Get("/transactions/:id", transactionsController.GetTransactionByID)                         // get transaction by id
 	// router.Post("/transactions/:branch_id", transactionsController.Tra)
@@ -141,7 +147,7 @@ func TransactionsRoutes(router *fiber.App, transactionsController *transactions.
 }
 
 func CustomerRoutes(router *fiber.App, customerController *customers.CustomersController, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Get("/customers", customerController.GetCustomers)          // get all customers
 	api.Get("/customers/:id", customerController.GetCustomerByID)   // get customer by id
 	api.Post("/customers", customerController.CreateCustomer)       // create customer -- activity logged here if succesfull
@@ -150,7 +156,7 @@ func CustomerRoutes(router *fiber.App, customerController *customers.CustomersCo
 }
 
 func BNPLRoutes(router *fiber.App, bnplController *bnpl.BNPLController, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Post("/bnpl", bnplController.NewBNPL)                                   // create bnpl -- activity logged here if succesfull
 	api.Post("/bnpl/:id/credit", bnplController.CreditBNPL)                     // credit bnpl
 	api.Delete("/bnpl/:id", bnplController.DeleteBNPL)                          // delete bnpl
@@ -160,7 +166,7 @@ func BNPLRoutes(router *fiber.App, bnplController *bnpl.BNPLController, middlewa
 }
 
 func ProposalsRoutes(router *fiber.App, proposalsController *arrivals.ProposalsHandlers, middleware *middleware.Middlewares) {
-	api := router.Group("/api")
+	api := router.Group("/api/v1/admin")
 	api.Get("/proposals", proposalsController.GetProposals)               // get proposals
 	api.Get("/proposals/detail", proposalsController.GetProposalDetail)   // get proposal by id
 	api.Post("/proposals/new", proposalsController.NewProposals)          // create proposal

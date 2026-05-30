@@ -60,9 +60,9 @@ type SupplierQuery struct {
 // @Param phone query string false "Supplier phone"
 // @Param address query string false "Supplier address"
 // @Param notes query string false "Supplier notes"
-// @Success 200 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/suppliers [get]
+// @Success 200 {object} models.Output[[]models.Supplier]
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/suppliers [get]
 func (s *SuppliersController) GetSuppliers(c *fiber.Ctx) error {
 
 	var query SupplierQuery
@@ -151,10 +151,10 @@ func (s *SuppliersController) GetSuppliers(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param id path string true "Supplier ID"
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/suppliers/{id} [get]
+// @Success 200 {object} models.Output[models.Supplier]
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/suppliers/{id} [get]
 func (s *SuppliersController) GetSupplierByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Getting supplier by ID")
@@ -188,11 +188,11 @@ func (s *SuppliersController) GetSupplierByID(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param supplier body models.SupplierBase true "Supplier data"
-// @Success 201 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/suppliers [post]
+// @Success 201 {object} models.Output[models.Supplier]
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/suppliers [post]
 func (s *SuppliersController) CreateSupplier(c *fiber.Ctx) error {
 	log.Debug().Msg("Creating new supplier")
 
@@ -270,11 +270,11 @@ func (s *SuppliersController) CreateSupplier(c *fiber.Ctx) error {
 // @Produce json
 // @Param id path string true "Supplier ID"
 // @Param supplier body models.SupplierBase true "Supplier data"
-// @Success 200 {object} models.Output
-// @Failure 400 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/suppliers/{id} [put]
+// @Success 200 {object} models.MessageResponse
+// @Failure 400 {object} models.ErrorOutput
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/suppliers/{id} [put]
 func (s *SuppliersController) UpdateSupplier(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Updating supplier")
@@ -343,10 +343,10 @@ func (s *SuppliersController) UpdateSupplier(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param id path string true "Supplier ID"
-// @Success 200 {object} models.Output
-// @Failure 404 {object} models.Output
-// @Failure 500 {object} models.Output
-// @Router /api/suppliers/{id} [delete]
+// @Success 200 {object} models.MessageResponse
+// @Failure 404 {object} models.ErrorOutput
+// @Failure 500 {object} models.ErrorOutput
+// @Router /api/v1/admin/suppliers/{id} [delete]
 func (s *SuppliersController) DeleteSupplier(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Deleting supplier")

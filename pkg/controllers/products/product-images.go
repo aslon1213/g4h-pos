@@ -19,10 +19,10 @@ import (
 // @Produce json
 // @Param product_id path string true "Product ID"
 // @Param image formData file true "Image file to upload"
-// @Success 200 {object} string
+// @Success 200 {object} map[string]string
 // @Failure 400 {string} string
 // @Failure 500 {string} string
-// @Router /api/products/{product_id}/images [post]
+// @Router /api/v1/admin/products/{product_id}/images [post]
 func (p *ProductsController) UploadProductImage(c *fiber.Ctx) error {
 	file, err := c.FormFile("image")
 	if err != nil {
@@ -82,7 +82,7 @@ func (p *ProductsController) UploadProductImage(c *fiber.Ctx) error {
 // @Success 200 {string} string
 // @Failure 400 {string} string
 // @Failure 500 {string} string
-// @Router /api/products/{product_id}/images/{key} [delete]
+// @Router /api/v1/admin/products/{product_id}/images/{key} [delete]
 func (p *ProductsController) DeleteProductImage(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
@@ -123,10 +123,10 @@ func (p *ProductsController) DeleteProductImage(c *fiber.Ctx) error {
 // @Tags products
 // @Produce json
 // @Param product_id path string true "Product ID"
-// @Success 200 {object} string
+// @Success 200 {object} map[string][]string
 // @Failure 400 {string} string
 // @Failure 500 {string} string
-// @Router /api/products/{product_id}/images [get]
+// @Router /api/v1/admin/products/{product_id}/images [get]
 func (p *ProductsController) GetImagesOfProduct(c *fiber.Ctx) error {
 	productID := c.Params("product_id")
 	if productID == "" {
@@ -157,7 +157,7 @@ func (p *ProductsController) GetImagesOfProduct(c *fiber.Ctx) error {
 // @Success 200 {file} binary
 // @Failure 400 {string} string
 // @Failure 500 {string} string
-// @Router /api/products/images/{key} [get]
+// @Router /api/v1/admin/products/images/{key} [get]
 func (p *ProductsController) GetImage(c *fiber.Ctx) error {
 	key := c.Params("key")
 	if key == "" {
