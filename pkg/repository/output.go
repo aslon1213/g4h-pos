@@ -2,7 +2,9 @@ package models
 
 import (
 	"context"
+	"errors"
 
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -68,6 +70,29 @@ func ReturnError(c *fiber.Ctx, err error) error {
 		Message: err.Error(),
 		Code:    fiber.StatusInternalServerError,
 	}))
+}
+
+// RespondError writes the standard error envelope with an explicit status code.
+// Use it from handlers for validation/parse failures that are not repository
+// sentinels (e.g. a bad request body).
+func RespondError(c *fiber.Ctx, code int, msg string) error {
+	return c.Status(code).JSON(NewErrorOutput(NewError(msg, code)))
+}
+
+// RespondRepoError maps a repository sentinel error (see pkg/repository/repoerr)
+// to the matching HTTP status, so every handler can simply
+// `return models.RespondRepoError(c, err)` without importing mongo.
+func RespondRepoError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, repoerr.ErrNotFound):
+		return RespondError(c, fiber.StatusNotFound, err.Error())
+	case errors.Is(err, repoerr.ErrConflict):
+		return RespondError(c, fiber.StatusConflict, err.Error())
+	case errors.Is(err, repoerr.ErrInvalidInput):
+		return RespondError(c, fiber.StatusBadRequest, err.Error())
+	default:
+		return RespondError(c, fiber.StatusInternalServerError, err.Error())
+	}
 }
 
 // NotImplemented is a placeholder response for stubbed-out handlers. It returns

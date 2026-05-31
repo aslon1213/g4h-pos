@@ -2,23 +2,21 @@ package storeauth
 
 import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	customerrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/customer"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Controller handles storefront customer authentication against the
-// store_customers collection (separate from staff auth).
+// store_customers collection (separate from staff auth). All database access
+// goes through the customer repository held on Customers.
 type Controller struct {
-	StoreCustomersCollection *mongo.Collection
-	ActivitiesCollection     *mongo.Collection
-	DB                       *mongo.Database
+	Customers *customerrepo.CustomerRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		StoreCustomersCollection: db.Collection("store_customers"),
-		ActivitiesCollection:     db.Collection("activities"),
-		DB:                       db,
+		Customers: customerrepo.New(db),
 	}
 }
 

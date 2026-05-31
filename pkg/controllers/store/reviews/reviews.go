@@ -2,25 +2,24 @@ package storereviews
 
 import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	orderrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/order"
+	reviewrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/review"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Controller handles writing and managing product reviews. Public review
-// listing lives on the storefront products controller.
+// listing lives on the storefront products controller. Reviews are persisted
+// through Reviews; Orders is available to enforce verified-purchase rules.
 type Controller struct {
-	ReviewsCollection  *mongo.Collection
-	ProductsCollection *mongo.Collection
-	OrdersCollection   *mongo.Collection
-	DB                 *mongo.Database
+	Reviews *reviewrepo.ReviewRepository
+	Orders  *orderrepo.OrderRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		ReviewsCollection:  db.Collection("reviews"),
-		ProductsCollection: db.Collection("products"),
-		OrdersCollection:   db.Collection("orders"),
-		DB:                 db,
+		Reviews: reviewrepo.New(db),
+		Orders:  orderrepo.New(db),
 	}
 }
 

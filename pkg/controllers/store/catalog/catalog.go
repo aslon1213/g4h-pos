@@ -2,22 +2,24 @@ package storecatalog
 
 import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	catalogrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/catalog"
+	productrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/product"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Controller handles the public catalog browse surface (categories, brands, search).
+// Controller handles the public catalog browse surface (categories, brands,
+// search). Category/brand reads go through Catalog; product listing (category
+// products, search) reuses the product repository.
 type Controller struct {
-	CategoriesCollection *mongo.Collection
-	ProductsCollection   *mongo.Collection
-	DB                   *mongo.Database
+	Catalog  *catalogrepo.CatalogRepository
+	Products *productrepo.ProductRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		CategoriesCollection: db.Collection("categories"),
-		ProductsCollection:   db.Collection("products"),
-		DB:                   db,
+		Catalog:  catalogrepo.New(db),
+		Products: productrepo.New(db),
 	}
 }
 

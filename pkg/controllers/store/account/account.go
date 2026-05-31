@@ -2,20 +2,20 @@ package storeaccount
 
 import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	customerrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/customer"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Controller handles the storefront customer account surface (address book, etc).
+// Controller handles the storefront customer account surface (address book,
+// etc). Address-book operations are served by the customer repository.
 type Controller struct {
-	StoreCustomersCollection *mongo.Collection
-	DB                       *mongo.Database
+	Customers *customerrepo.CustomerRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		StoreCustomersCollection: db.Collection("store_customers"),
-		DB:                       db,
+		Customers: customerrepo.New(db),
 	}
 }
 

@@ -2,23 +2,24 @@ package storeproducts
 
 import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	productrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/product"
+	reviewrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/review"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Controller handles the public storefront product browse surface (read-only
-// views over the products collection).
+// views over the products collection). Product reads go through Products; the
+// public review listing reuses the shared review repository.
 type Controller struct {
-	ProductsCollection *mongo.Collection
-	ReviewsCollection  *mongo.Collection
-	DB                 *mongo.Database
+	Products *productrepo.ProductRepository
+	Reviews  *reviewrepo.ReviewRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		ProductsCollection: db.Collection("products"),
-		ReviewsCollection:  db.Collection("reviews"),
-		DB:                 db,
+		Products: productrepo.New(db),
+		Reviews:  reviewrepo.New(db),
 	}
 }
 
