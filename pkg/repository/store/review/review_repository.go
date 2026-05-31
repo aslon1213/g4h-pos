@@ -16,9 +16,11 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// ReviewRepository owns the reviews collection.
+// ReviewRepository owns the reviews collection and keeps the product document's
+// denormalized review aggregates (rating, review_count) in sync via products.
 type ReviewRepository struct {
-	coll *mongo.Collection
+	coll     *mongo.Collection
+	products *mongo.Collection
 }
 
 // New builds the repository and ensures one-review-per-customer-per-product.
@@ -31,7 +33,42 @@ func New(db *mongo.Database) *ReviewRepository {
 		},
 		{Keys: bson.D{{Key: "product_id", Value: 1}, {Key: "created_at", Value: -1}}},
 	})
-	return &ReviewRepository{coll: coll}
+	return &ReviewRepository{coll: coll, products: db.Collection("products")}
+}
+
+// recalcProduct recomputes a product's denormalized rating + review_count from
+// the reviews collection and writes them onto the product document. Best-effort:
+// an aggregation/update error is returned for the caller to log but should not
+// fail the review mutation itself.
+func (r *ReviewRepository) recalcProduct(ctx context.Context, productID string) error {
+	pipeline := mongo.Pipeline{
+		bson.D{{Key: "$match", Value: bson.D{{Key: "product_id", Value: productID}}}},
+		bson.D{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: nil},
+			{Key: "avg", Value: bson.D{{Key: "$avg", Value: "$rating"}}},
+			{Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}},
+		}}},
+	}
+	cursor, err := r.coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return err
+	}
+	var rows []struct {
+		Avg   float64 `bson:"avg"`
+		Count int     `bson:"count"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return err
+	}
+	rating, count := 0.0, 0
+	if len(rows) > 0 {
+		rating, count = rows[0].Avg, rows[0].Count
+	}
+	_, err = r.products.UpdateOne(ctx,
+		bson.M{"_id": productID},
+		bson.M{"$set": bson.M{"rating": rating, "review_count": count}},
+	)
+	return err
 }
 
 // Create inserts a new review. Returns repoerr.ErrConflict if this customer has
@@ -49,6 +86,7 @@ func (r *ReviewRepository) Create(ctx context.Context, review *models.Review) (*
 		}
 		return nil, err
 	}
+	_ = r.recalcProduct(ctx, review.ProductID)
 	return review, nil
 }
 
@@ -72,18 +110,22 @@ func (r *ReviewRepository) Update(ctx context.Context, customerID, reviewID stri
 	if err != nil {
 		return nil, err
 	}
+	_ = r.recalcProduct(ctx, review.ProductID)
 	return review, nil
 }
 
 // Delete removes the caller's own review.
 func (r *ReviewRepository) Delete(ctx context.Context, customerID, reviewID string) error {
-	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": reviewID, "customer_id": customerID})
+	// Read the review first so we know which product to recompute after deletion.
+	deleted := &models.Review{}
+	err := r.coll.FindOneAndDelete(ctx, bson.M{"_id": reviewID, "customer_id": customerID}).Decode(deleted)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return repoerr.ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	if res.DeletedCount == 0 {
-		return repoerr.ErrNotFound
-	}
+	_ = r.recalcProduct(ctx, deleted.ProductID)
 	return nil
 }
 

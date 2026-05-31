@@ -40,6 +40,12 @@ const (
 	ActivityTypeCreateFinance     ActivityType = "create_finance"
 	ActivityTypeEditFinance       ActivityType = "edit_finance"
 	ActivityTypeDeleteFinance     ActivityType = "delete_finance"
+	ActivityTypeCreateCategory    ActivityType = "create_category"
+	ActivityTypeEditCategory      ActivityType = "edit_category"
+	ActivityTypeDeleteCategory    ActivityType = "delete_category"
+	ActivityTypeCreateBrand       ActivityType = "create_brand"
+	ActivityTypeEditBrand         ActivityType = "edit_brand"
+	ActivityTypeDeleteBrand       ActivityType = "delete_brand"
 )
 
 type Activity struct {

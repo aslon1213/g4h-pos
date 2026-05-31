@@ -62,6 +62,12 @@ definitions:
     - create_finance
     - edit_finance
     - delete_finance
+    - create_category
+    - edit_category
+    - delete_category
+    - create_brand
+    - edit_brand
+    - delete_brand
     type: string
     x-enum-varnames:
     - ActivityTypeLogin
@@ -92,6 +98,12 @@ definitions:
     - ActivityTypeCreateFinance
     - ActivityTypeEditFinance
     - ActivityTypeDeleteFinance
+    - ActivityTypeCreateCategory
+    - ActivityTypeEditCategory
+    - ActivityTypeDeleteCategory
+    - ActivityTypeCreateBrand
+    - ActivityTypeEditBrand
+    - ActivityTypeDeleteBrand
   models.Address:
     properties:
       city:
@@ -181,6 +193,15 @@ definitions:
       phone:
         type: string
     type: object
+  models.BranchAvailability:
+    properties:
+      branch_id:
+        type: string
+      in_stock:
+        type: boolean
+      quantity:
+        type: integer
+    type: object
   models.BranchFinance:
     properties:
       balance:
@@ -201,12 +222,86 @@ definitions:
       total_income:
         type: integer
     type: object
+  models.Brand:
+    properties:
+      country:
+        type: string
+      id:
+        type: string
+      logo:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  models.BrandInput:
+    properties:
+      country:
+        type: string
+      logo:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  models.Category:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      image:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  models.CategoryInput:
+    properties:
+      description:
+        type: string
+      image:
+        type: string
+      is_active:
+        description: pointer so "false" is distinguishable from "unset" on update
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+    type: object
   models.CloseJournalEntryInput:
     properties:
       cash_left:
         type: integer
       terminal_income:
         type: integer
+    type: object
+  models.CreateReviewInput:
+    properties:
+      body:
+        type: string
+      rating:
+        type: integer
+      title:
+        type: string
     type: object
   models.Customer:
     properties:
@@ -482,11 +577,44 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-array_models_BranchAvailability:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.BranchAvailability'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-array_models_BranchFinance:
     properties:
       data:
         items:
           $ref: '#/definitions/models.BranchFinance'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Brand:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Brand'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Category:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Category'
         type: array
       error:
         items:
@@ -537,6 +665,17 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-array_string:
+    properties:
+      data:
+        items:
+          type: string
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-models_BNPL:
     properties:
       data:
@@ -550,6 +689,24 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/models.BranchFinance'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Brand:
+    properties:
+      data:
+        $ref: '#/definitions/models.Brand'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Category:
+    properties:
+      data:
+        $ref: '#/definitions/models.Category'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -582,6 +739,42 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-models_PagedProducts:
+    properties:
+      data:
+        $ref: '#/definitions/models.PagedProducts'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_PagedReviews:
+    properties:
+      data:
+        $ref: '#/definitions/models.PagedReviews'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Product:
+    properties:
+      data:
+        $ref: '#/definitions/models.Product'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Review:
+    properties:
+      data:
+        $ref: '#/definitions/models.Review'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-models_StoreCustomer:
     properties:
       data:
@@ -609,6 +802,32 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.PagedProducts:
+    properties:
+      count:
+        type: integer
+      page:
+        type: integer
+      products:
+        items:
+          $ref: '#/definitions/models.Product'
+        type: array
+      total:
+        type: integer
+    type: object
+  models.PagedReviews:
+    properties:
+      count:
+        type: integer
+      page:
+        type: integer
+      reviews:
+        items:
+          $ref: '#/definitions/models.Review'
+        type: array
+      total:
+        type: integer
+    type: object
   models.PaymentMethod:
     enum:
     - cash
@@ -629,8 +848,21 @@ definitions:
     - PaymentMethodUndefined
   models.Product:
     properties:
+      brand:
+        allOf:
+        - $ref: '#/definitions/models.Brand'
+        description: Resolved catalog info for BrandID
+      brand_id:
+        description: Brand id (referencing the `brands` catalog collection)
+        type: string
+      categories:
+        description: Attached on read for the storefront (never persisted on the product
+          doc).
+        items:
+          $ref: '#/definitions/models.Category'
+        type: array
       category:
-        description: Product categories
+        description: Product category ids (referencing the `categories` catalog collection)
         items:
           type: string
         type: array
@@ -672,6 +904,17 @@ definitions:
         items:
           $ref: '#/definitions/models.ProductDistribution'
         type: array
+      rating:
+        description: Average review rating (0..5), denormalized
+        type: number
+      review_count:
+        description: Number of reviews, denormalized
+        type: integer
+      reviews:
+        description: Recent reviews (product detail only)
+        items:
+          $ref: '#/definitions/models.Review'
+        type: array
       sku:
         description: Stock Keeping Unit
         type: string
@@ -681,8 +924,11 @@ definitions:
     type: object
   models.ProductBase:
     properties:
+      brand_id:
+        description: Brand id (referencing the `brands` catalog collection)
+        type: string
       category:
-        description: Product categories
+        description: Product category ids (referencing the `categories` catalog collection)
         items:
           type: string
         type: array
@@ -768,6 +1014,30 @@ definitions:
       password:
         type: string
       phone:
+        type: string
+    type: object
+  models.Review:
+    properties:
+      body:
+        type: string
+      created_at:
+        type: string
+      customer_id:
+        type: string
+      customer_name:
+        type: string
+      helpful_votes:
+        type: integer
+      id:
+        type: string
+      product_id:
+        type: string
+      rating:
+        description: 1..5
+        type: integer
+      title:
+        type: string
+      updated_at:
         type: string
     type: object
   models.SalesSession:
@@ -941,6 +1211,15 @@ definitions:
       phone:
         type: string
     type: object
+  models.UpdateReviewInput:
+    properties:
+      body:
+        type: string
+      rating:
+        type: integer
+      title:
+        type: string
+    type: object
   models.UserRegisterInput:
     properties:
       branch:
@@ -955,6 +1234,11 @@ definitions:
         type: string
       username:
         type: string
+    type: object
+  models.VoteReviewInput:
+    properties:
+      helpful:
+        type: boolean
     type: object
   products.NewIncomeInput:
     properties:
@@ -1296,6 +1580,274 @@ paths:
       summary: Get BNPLs of branch
       tags:
       - BNPL
+  /api/v1/admin/catalog/brands:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Brand'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List all catalog brands
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Brand details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BrandInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Brand'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Create a catalog brand
+      tags:
+      - catalog
+  /api/v1/admin/catalog/brands/{id}:
+    delete:
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete a catalog brand
+      tags:
+      - catalog
+    get:
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Brand'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a catalog brand by id
+      tags:
+      - catalog
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Brand fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BrandInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Brand'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a catalog brand
+      tags:
+      - catalog
+  /api/v1/admin/catalog/categories:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Category'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List all catalog categories (including inactive)
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Category details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CategoryInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Create a catalog category
+      tags:
+      - catalog
+  /api/v1/admin/catalog/categories/{id}:
+    delete:
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete a catalog category
+      tags:
+      - catalog
+    get:
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a catalog category by id
+      tags:
+      - catalog
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Category fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CategoryInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a catalog category
+      tags:
+      - catalog
   /api/v1/admin/customers:
     get:
       consumes:
@@ -3481,8 +4033,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Brand'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List brands / manufacturers
@@ -3493,8 +4049,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Category'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List catalog categories
@@ -3511,8 +4071,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a category by id
@@ -3526,11 +4090,23 @@ paths:
         name: id
         required: true
         type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedProducts'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List products in a category
@@ -3538,17 +4114,53 @@ paths:
       - store-catalog
   /api/v1/store/catalog/search:
     get:
-      description: Full-text search with filters, facets, sort and pagination
+      description: Full-text-ish search with filters, sort and pagination over products
       parameters:
       - description: Search query
         in: query
         name: q
         type: string
+      - description: Category id
+        in: query
+        name: category
+        type: string
+      - description: Brand id
+        in: query
+        name: brand
+        type: string
+      - description: Minimum price
+        in: query
+        name: price_min
+        type: number
+      - description: Maximum price
+        in: query
+        name: price_max
+        type: number
+      - description: Sort (newest, name_asc, name_desc, rating_desc, price_asc, price_desc)
+        in: query
+        name: sort
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedProducts'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Search the catalog
@@ -3677,8 +4289,34 @@ paths:
       - store-orders
   /api/v1/store/products:
     get:
-      description: List products with filter/sort/pagination
+      description: |-
+        List products with filter/sort/pagination. Each product carries
+        its attached catalog info (categories + brand) and review aggregates.
       parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Category id
+        in: query
+        name: category
+        type: string
+      - description: Brand id
+        in: query
+        name: brand
+        type: string
+      - description: Minimum price
+        in: query
+        name: price_min
+        type: number
+      - description: Maximum price
+        in: query
+        name: price_max
+        type: number
+      - description: Sort (newest, name_asc, name_desc, rating_desc, price_asc, price_desc)
+        in: query
+        name: sort
+        type: string
       - description: Page number
         in: query
         name: page
@@ -3690,8 +4328,16 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedProducts'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List storefront products
@@ -3699,6 +4345,9 @@ paths:
       - store-products
   /api/v1/store/products/{id}:
     get:
+      description: |-
+        Returns the product with its catalog info (categories + brand) and
+        a handful of recent reviews attached.
       parameters:
       - description: Product ID
         in: path
@@ -3708,8 +4357,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Product'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a storefront product by id
@@ -3726,8 +4379,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_BranchAvailability'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a product's stock availability per branch
@@ -3744,8 +4401,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_string'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a product's images
@@ -3759,11 +4420,19 @@ paths:
         name: id
         required: true
         type: string
+      - description: Max related products
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Product'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get related / recommended products
@@ -3777,28 +4446,56 @@ paths:
         name: id
         required: true
         type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedReviews'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List reviews for a product (public)
       tags:
       - store-products
     post:
+      consumes:
+      - application/json
       parameters:
       - description: Product ID
         in: path
         name: id
         required: true
         type: string
+      - description: Review details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateReviewInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Review'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3879,8 +4576,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_MessageResponse'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3889,17 +4590,33 @@ paths:
       tags:
       - store-reviews
     put:
+      consumes:
+      - application/json
       parameters:
       - description: Review ID
         in: path
         name: id
         required: true
         type: string
+      - description: Review fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateReviewInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Review'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3909,17 +4626,29 @@ paths:
       - store-reviews
   /api/v1/store/reviews/{id}/vote:
     post:
+      consumes:
+      - application/json
       parameters:
       - description: Review ID
         in: path
         name: id
         required: true
         type: string
+      - description: Vote
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.VoteReviewInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Review'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:

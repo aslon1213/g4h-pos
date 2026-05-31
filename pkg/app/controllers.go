@@ -7,6 +7,7 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/analytics"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/arrivals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/auth"
+	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/catalog"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers/bnpl"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/finance"
@@ -32,6 +33,7 @@ type Controllers struct {
 	Journals     *journal_handlers.JournalHandlers
 	Operations   *journal_handlers.OperationHandlers
 	Products     *products.ProductsController
+	Catalog      *catalog.CatalogController
 	Auth         *auth.AuthControllers
 	BNPL         *bnpl.BNPLController
 	Customers    *customers.CustomersController
@@ -52,6 +54,7 @@ func NewControllers(db *mongo.Database) *Controllers {
 		Journals:     journal_handlers.New(db),
 		Operations:   journal_handlers.NewOperationsHandler(db),
 		Products:     products.New(db),
+		Catalog:      catalog.New(db),
 		Auth:         auth.New(db),
 		Customers:    customers.New(db),
 		BNPL:         bnpl.New(db),
@@ -118,6 +121,8 @@ func SetupRoutes(app *fiber.App, controllers *Controllers) {
 	log.Debug().Msg("Journals routes set up successfully")
 	routes.ProductsRoutes(app, controllers.Products, controllers.Middlewares)
 	log.Debug().Msg("Products routes set up successfully")
+	routes.CatalogRoutes(app, controllers.Catalog, controllers.Middlewares)
+	log.Debug().Msg("Catalog routes set up successfully")
 	routes.CustomerRoutes(app, controllers.Customers, controllers.Middlewares)
 	log.Debug().Msg("Customer routes set up successfully")
 	routes.BNPLRoutes(app, controllers.BNPL, controllers.Middlewares)

@@ -100,3 +100,8 @@ Tests live in `test/` (package `test`) and are **integration tests against a liv
 - `Output` is generic (`Output[T]`); never write `NewOutput(nil, ...)` (untyped nil breaks inference) — use `NewErrorOutput(...)`. Swaggo `@Success`/`@Failure` must use a concrete type (`models.Output[Type]` / `models.ErrorOutput`), never `models.Output[any]`.
 - A few files don't import the `models` package (e.g. `product-images.go`), so their swaggo can't reference `models.*` types — they use native types (`{file} binary`, `map[string]string`).
 - Pre-existing gofmt drift in `pkg/controllers/proxy/proxy.go` and `pkg/repository/product-models.go` (unformatted at HEAD) — leave unless intentionally tidying.
+
+
+
+####### NEVER 
+NEVER RUN GO TESTS --- `go test` --- they require human inputs and should be run by humans always

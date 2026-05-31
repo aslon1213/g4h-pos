@@ -125,6 +125,9 @@ func (r *ProductsRepository) Update(ctx context.Context, id string, base *models
 	if base.Category != nil {
 		set["category"] = base.Category
 	}
+	if base.BrandID != "" {
+		set["brand_id"] = base.BrandID
+	}
 	if base.SKU != "" {
 		set["sku"] = base.SKU
 	}

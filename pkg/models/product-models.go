@@ -64,16 +64,25 @@ type ProductItem struct {
 }
 
 type ProductBase struct {
-	Name              string           `json:"name" bson:"name"`                               // Product name
-	Description       string           `json:"description" bson:"description"`                 // Product description
-	Manufacturer      ManufacturerInfo `json:"manufacturer" bson:"manufacturer"`               // Manufacturer details
-	Category          []string         `json:"category" bson:"category"`                       // Product categories
-	SKU               string           `json:"sku" bson:"sku"`                                 // Stock Keeping Unit
-	MinimumStockAlert int32            `json:"minimum_stock_alert" bson:"minimum_stock_alert"` // Minimum stock alert
-	GeneralIncomePrice float32            `json:"general_income_price" bson:"general_income_price"` // General income price of the product --- the price generally this item is bought from supplier
+	Name               string           `json:"name" bson:"name"`                                 // Product name
+	Description        string           `json:"description" bson:"description"`                   // Product description
+	Manufacturer       ManufacturerInfo `json:"manufacturer" bson:"manufacturer"`                 // Manufacturer details
+	Category           []string         `json:"category" bson:"category"`                         // Product category ids (referencing the `categories` catalog collection)
+	BrandID            string           `json:"brand_id" bson:"brand_id"`                         // Brand id (referencing the `brands` catalog collection)
+	SKU                string           `json:"sku" bson:"sku"`                                   // Stock Keeping Unit
+	MinimumStockAlert  int32            `json:"minimum_stock_alert" bson:"minimum_stock_alert"`   // Minimum stock alert
+	GeneralIncomePrice float32          `json:"general_income_price" bson:"general_income_price"` // General income price of the product --- the price generally this item is bought from supplier
 }
 
-// Product represents a complete product entity with all its details
+// Product represents a complete product entity with all its details.
+//
+// Rating and ReviewCount are denormalized review aggregates maintained by the
+// review repository (recomputed whenever a review is created/updated/deleted) so
+// the storefront can list/sort products without joining the reviews collection.
+//
+// Categories, Brand and Reviews are NOT stored (bson:"-"); they are catalog /
+// review info *attached on read* by the storefront product repository when a
+// product is fetched for the browse surface.
 type Product struct {
 	ID                   string                `json:"id" bson:"_id"` // Unique product identifier
 	ProductBase          `bson:",inline"`      // Unique product identifier
@@ -82,6 +91,13 @@ type Product struct {
 	QuantityDistribution []ProductDistribution `json:"quantity_distribution" bson:"quantity_distribution"` // Stock levels by location
 	Images               []string              `json:"images" bson:"images"`                               // Product images (lins) saved to some S3
 	IncomeHistory        []IncomeHistory       `json:"income_history" bson:"income_history"`               // Income history
+	Rating               float64               `json:"rating" bson:"rating"`                               // Average review rating (0..5), denormalized
+	ReviewCount          int                   `json:"review_count" bson:"review_count"`                   // Number of reviews, denormalized
+
+	// Attached on read for the storefront (never persisted on the product doc).
+	Categories []Category `json:"categories,omitempty" bson:"-"` // Resolved catalog info for Category ids
+	Brand      *Brand     `json:"brand,omitempty" bson:"-"`      // Resolved catalog info for BrandID
+	Reviews    []Review   `json:"reviews,omitempty" bson:"-"`    // Recent reviews (product detail only)
 }
 
 func NewProduct(productBase *ProductBase) *Product {
@@ -93,17 +109,14 @@ func NewProduct(productBase *ProductBase) *Product {
 		QuantityDistribution: []ProductDistribution{},
 		Images:               []string{},
 		IncomeHistory:        []IncomeHistory{},
+		Rating:               0,
+		ReviewCount:          0,
 	}
-}
-
-type ProductOutput struct {
-	Data  []Product `json:"data"`
-	Error []Error   `json:"error"`
 }
 
 // ProductQueryParams defines the available search parameters for products
 type ProductQueryParams struct {
-	Name string `query:"name"` // Filter by name
+	Name     string  `query:"name"`      // Filter by name
 	BranchID string  `query:"branch_id"` // Filter by branch
 	Category string  `query:"category"`  // Filter by category
 	SKU      string  `query:"sku"`       // Filter by SKU

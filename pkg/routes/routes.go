@@ -10,6 +10,7 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/analytics"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/arrivals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/auth"
+	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/catalog"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers/bnpl"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/finance"
@@ -58,7 +59,7 @@ func PublicAuthRoutes(router *fiber.App, authController *auth.AuthControllers, m
 
 func AuthRoutes(router *fiber.App, authController *auth.AuthControllers, middleware *middleware.Middlewares) {
 	api := router.Group("/api/v1/admin")
-	api.Get("/auth/me", authController.InfoMe)                         // get user info
+	api.Get("/auth/me", authController.InfoMe)                        // get user info
 	api.Get("/activities/recent", authController.GetRecentActivities) // get recent activities
 	api.Get("/activities/me", authController.GetActivitesOfUser)      // get activities of user
 }
@@ -102,6 +103,24 @@ func ProductsRoutes(router *fiber.App, productsController *products.ProductsCont
 	api.Delete("/products/:id/images/:key", productsController.DeleteProductImage) // delete product image
 	api.Get("/products/:id/images", productsController.GetImagesOfProduct)         // get images of product
 	api.Get("/products/images/:key", productsController.GetImage)                  // get image
+}
+
+// CatalogRoutes registers the admin catalog-management endpoints (categories and
+// brands) that storefront products attach to.
+func CatalogRoutes(router *fiber.App, catalogController *catalog.CatalogController, middleware *middleware.Middlewares) {
+	api := router.Group("/api/v1/admin")
+
+	api.Get("/catalog/categories", catalogController.ListCategories)        // list categories (incl inactive)
+	api.Post("/catalog/categories", catalogController.CreateCategory)       // create category -- activity logged
+	api.Get("/catalog/categories/:id", catalogController.GetCategory)       // get category by id
+	api.Put("/catalog/categories/:id", catalogController.UpdateCategory)    // update category -- activity logged
+	api.Delete("/catalog/categories/:id", catalogController.DeleteCategory) // delete category -- activity logged
+
+	api.Get("/catalog/brands", catalogController.ListBrands)         // list brands
+	api.Post("/catalog/brands", catalogController.CreateBrand)       // create brand -- activity logged
+	api.Get("/catalog/brands/:id", catalogController.GetBrand)       // get brand by id
+	api.Put("/catalog/brands/:id", catalogController.UpdateBrand)    // update brand -- activity logged
+	api.Delete("/catalog/brands/:id", catalogController.DeleteBrand) // delete brand -- activity logged
 }
 
 func JournalsRoutes(router *fiber.App, journalsController *journal_handlers.JournalHandlers, operationsController *journal_handlers.OperationHandlers, middleware *middleware.Middlewares) {
