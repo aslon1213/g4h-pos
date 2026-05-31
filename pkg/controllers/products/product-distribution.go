@@ -1,17 +1,11 @@
 package products
 
 import (
-	"context"
-
-	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/suppliers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
-	"github.com/aslon1213/g4h_pos_erp/platform/database"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // to add new income to the product distribution
@@ -42,134 +36,37 @@ func (p *ProductsController) NewIncome(c *fiber.Ctx) error {
 	input := NewIncomeInput{}
 	if err := c.BodyParser(&input); err != nil {
 		log.Error().Err(err).Msg("Failed to parse income input")
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Invalid request body format",
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, "Invalid request body format")
 	}
 
 	// Validate required fields
 	if input.Quantity <= 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Quantity must be greater than 0",
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, "Quantity must be greater than 0")
 	}
 
 	if input.Price <= 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Price must be greater than 0",
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, "Price must be greater than 0")
 	}
 
 	if input.SellingPrice <= 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Selling price must be greater than 0",
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, "Selling price must be greater than 0")
 	}
 
 	if input.UploadedTo.ID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Upload location ID is required",
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, "Upload location ID is required")
 	}
 
 	log.Debug().Str("product_id", product_id).Interface("input", input).Msg("Processing income for product")
 
-	// start a db transactions
-	session, ctx, err := database.StartTransaction(p.ProductsCollection.Database().Client())
+	// The repository runs the full income flow (quantity-distribution update +
+	// supplier transaction) inside a single MongoDB multi-document transaction.
+	product, err := p.Repo.AddIncome(c.Context(), product_id, &input.IncomeHistory, input.SellingPrice)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to start transaction")
-
-		return models.ReturnError(c, err)
-	}
-	defer session.EndSession(ctx)
-
-	// get the product
-	product := &models.Product{}
-	res := p.ProductsCollection.FindOne(c.Context(), bson.M{"_id": product_id})
-	if res.Err() != nil {
-		log.Error().Err(res.Err()).Str("product_id", product_id).Msg("Product not found")
-
-		return models.ReturnError(c, res.Err())
-	}
-	err = res.Decode(product)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to decode product")
-
-		return models.ReturnError(c, err)
-	}
-
-	log.Debug().Str("product_id", product_id).Msg("Updating quantity distribution")
-
-	// update the price distribution
-	if len(product.QuantityDistribution) > 0 {
-		for _, distribution := range product.QuantityDistribution {
-			if distribution.Place.ID == input.UploadedTo.ID {
-				// update the quantity
-				distribution.Quantity += input.Quantity
-				distribution.Price = input.SellingPrice
-				// update the database
-				filter := bson.M{"_id": product_id, "quantity_distribution.place._id": input.UploadedTo.ID}
-				update := bson.M{"$set": bson.M{"quantity_distribution.$.price": input.SellingPrice}, "$inc": bson.M{"quantity_distribution.$.quantity": input.Quantity}}
-				_, err = p.ProductsCollection.UpdateOne(ctx, filter, update)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to update quantity distribution")
-
-					return models.AbortTransactionAndReturnError(ctx, session, c, err)
-				}
-			} else {
-				err = AppendQuantityDistribution(ctx, input, product, session, p)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to create new distribution")
-
-					return models.AbortTransactionAndReturnError(ctx, session, c, err)
-				}
-			}
-		}
-	} else {
-		err = AppendQuantityDistribution(ctx, input, product, session, p)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to create new distribution")
-
-			return models.AbortTransactionAndReturnError(ctx, session, c, err)
-		}
-	}
-
-	log.Debug().Msg("Creating supplier transaction")
-	// create supplier transaction
-	transaction_base := models.TransactionBase{
-		Amount:        uint32(input.Price * input.Quantity),
-		Description:   "Income from " + input.SupplierID,
-		Type:          models.TransactionTypeDebit,
-		PaymentMethod: models.PaymentMethodUndefined,
-	}
-
-	supplier_transaction, err := suppliers.NewSupplierTransaction(
-		ctx,
-		transaction_base,
-		input.SupplierID,
-		input.UploadedTo.ID,
-		p.TransactionsCollection,
-		p.FinanceCollection,
-		p.SupplierCollection,
-	)
-	log.Debug().Interface("supplier_transaction", supplier_transaction).Msg("Supplier transaction created")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create supplier transaction")
-
-		return models.AbortTransactionAndReturnError(ctx, session, c, err)
-	}
-
-	// commit the transaction
-	err = session.CommitTransaction(c.Context())
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to commit transaction")
-
-		return models.AbortTransactionAndReturnError(ctx, session, c, err)
+		// The original controller surfaced every failure here (including a
+		// missing product) as HTTP 500 via models.ReturnError /
+		// AbortTransactionAndReturnError; preserve that status exactly.
+		log.Error().Err(err).Str("product_id", product_id).Msg("Failed to process new income")
+		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	// log activity
@@ -182,28 +79,6 @@ func (p *ProductsController) NewIncome(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(
 		[]models.Product{*product},
 	))
-}
-
-func AppendQuantityDistribution(ctx context.Context, input NewIncomeInput, product *models.Product, session *mongo.Session, p *ProductsController) error {
-	// create new distribution
-	product.QuantityDistribution = append(product.QuantityDistribution, models.ProductDistribution{
-		Place: input.UploadedTo,
-		Price: input.SellingPrice,
-	})
-	filter := bson.M{"_id": product.ID}
-	update := bson.M{"$push": bson.M{"quantity_distribution": models.ProductDistribution{
-		ProductQuantityInfo: models.ProductQuantityInfo{
-			Quantity: input.Quantity,
-		},
-		Place: input.UploadedTo,
-		Price: input.SellingPrice,
-	}}}
-	_, err := p.ProductsCollection.UpdateOne(ctx, filter, update)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create new distribution")
-		return err
-	}
-	return nil
 }
 
 // NewTransfer godoc

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 
 	"github.com/rs/zerolog/log"
 )

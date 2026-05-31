@@ -2,34 +2,39 @@ package arrivals
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	arrivalsrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/arrivals"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.opentelemetry.io/otel"
 )
 
 var branches = []string{"xonobod", "polevoy"}
 
+// ProposalsHandlers exposes the admin proposals/arrivals endpoints. All MongoDB
+// access goes through Repo; the controller keeps S3/local image-file storage,
+// the invoice forward-proxy/PDF formatting, branch validation, date parsing, and
+// template rendering.
 type ProposalsHandlers struct {
-	ctx                 context.Context
-	ProposalsCollection *mongo.Collection
+	ctx  context.Context
+	Repo *arrivalsrepo.ArrivalsRepository
 }
 
 func New(db *mongo.Database) *ProposalsHandlers {
 	return &ProposalsHandlers{
-		ctx:                 context.Background(),
-		ProposalsCollection: db.Collection("proposals"),
+		ctx:  context.Background(),
+		Repo: arrivalsrepo.New(db),
 	}
 }
 
@@ -78,21 +83,13 @@ func (h *ProposalsHandlers) GetImageByProposalID(c *fiber.Ctx) error {
 	defer span.End()
 
 	proposalID := c.Query("proposal_id", c.Params("proposal_id"))
-	objectID, err := bson.ObjectIDFromHex(proposalID)
-	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("get_image_by_proposal_id.invalid_id")
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid proposal ID",
-		})
-	}
 
-	var proposal models.ProductProposal
-	err = h.ProposalsCollection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&proposal)
+	// A malformed hex id maps to ErrInvalidInput -> 400; a missing document to
+	// ErrNotFound -> 404, matching the original status codes exactly.
+	proposal, err := h.Repo.GetByID(ctx, proposalID)
 	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("get_image_by_proposal_id.not_found")
-		return c.Status(http.StatusNotFound).JSON(fiber.Map{
-			"error": "Proposal not found",
-		})
+		log.Error().Err(err).Str("proposal_id", proposalID).Msg("get_image_by_proposal_id.lookup_failed")
+		return models.RespondRepoError(c, err)
 	}
 
 	return c.Render("image_upload", fiber.Map{
@@ -122,13 +119,6 @@ func (h *ProposalsHandlers) UploadImage(c *fiber.Ctx) error {
 	defer span.End()
 
 	proposalID := c.Query("proposal_id", c.Params("proposal_id"))
-	objectID, err := bson.ObjectIDFromHex(proposalID)
-	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("upload_image.invalid_id")
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid proposal ID",
-		})
-	}
 
 	// Get the uploaded file
 	file, err := c.FormFile("file")
@@ -139,14 +129,11 @@ func (h *ProposalsHandlers) UploadImage(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if proposal exists
-	var proposal models.ProductProposal
-	err = h.ProposalsCollection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&proposal)
+	// Check if proposal exists (bad id -> 400, missing -> 404, as before).
+	proposal, err := h.Repo.GetByID(ctx, proposalID)
 	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("upload_image.proposal_not_found")
-		return c.Status(http.StatusNotFound).JSON(fiber.Map{
-			"error": "Proposal not found",
-		})
+		log.Error().Err(err).Str("proposal_id", proposalID).Msg("upload_image.proposal_lookup_failed")
+		return models.RespondRepoError(c, err)
 	}
 
 	// Delete old file if exists
@@ -171,12 +158,7 @@ func (h *ProposalsHandlers) UploadImage(c *fiber.Ctx) error {
 	}
 
 	// Update proposal with new image path
-	_, err = h.ProposalsCollection.UpdateOne(
-		ctx,
-		bson.M{"_id": objectID},
-		bson.M{"$set": bson.M{"image_file": newFilePath}},
-	)
-	if err != nil {
+	if err := h.Repo.SetImageFile(ctx, proposalID, newFilePath); err != nil {
 		log.Error().Err(err).Str("proposal_id", proposalID).Msg("upload_image.update_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update proposal",
@@ -221,31 +203,12 @@ func (h *ProposalsHandlers) NewProposals(c *fiber.Ctx) error {
 		})
 	}
 
-	var proposalsToInsert []interface{}
-	now := time.Now()
-
-	for _, name := range proposalNames {
-		proposal := models.ProductProposal{
-			ID:        bson.NewObjectID(),
-			Name:      name,
-			Date:      now,
-			Branch:    branch,
-			Fulfilled: false,
-		}
-		proposalsToInsert = append(proposalsToInsert, proposal)
-	}
-
-	result, err := h.ProposalsCollection.InsertMany(ctx, proposalsToInsert)
+	outputIDs, err := h.Repo.CreateMany(ctx, branch, proposalNames)
 	if err != nil {
 		log.Error().Err(err).Str("branch", branch).Msg("new_proposals.insert_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create proposals",
 		})
-	}
-
-	var outputIDs []string
-	for _, id := range result.InsertedIDs {
-		outputIDs = append(outputIDs, id.(bson.ObjectID).Hex())
 	}
 
 	log.Info().Str("branch", branch).Int("count", len(proposalNames)).Msg("new_proposals.success")
@@ -275,28 +238,25 @@ func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(h.ctx, "GetProposals")
 	defer span.End()
 
-	filter := bson.M{}
-
-	// Name filter
-	if name := c.Query("name"); name != "" {
-		filter["name"] = bson.M{"$regex": regexp.QuoteMeta(name), "$options": "i"}
+	query := arrivalsrepo.ProposalQueryParams{
+		Name:   c.Query("name"),
+		Branch: c.Query("branch"),
 	}
 
-	// Branch filter
-	if branch := c.Query("branch"); branch != "" {
-		filter["branch"] = bson.M{"$regex": regexp.QuoteMeta(branch), "$options": "i"}
-	}
-
-	// Fulfilled filter
+	// Fulfilled filter: default "false"; only true/false are honoured (any other
+	// value leaves the flag unset, matching the original behaviour).
 	if fulfilled := c.Query("fulfilled", "false"); fulfilled != "" {
 		if fulfilled == "true" {
-			filter["fulfilled"] = true
+			v := true
+			query.Fulfilled = &v
 		} else if fulfilled == "false" {
-			filter["fulfilled"] = false
+			v := false
+			query.Fulfilled = &v
 		}
 	}
 
-	// Date filters
+	// Date filters: parse here so a bad format still returns 400; the repository
+	// applies the same default bounds when a bound is nil.
 	if dateFrom := c.Query("date_from"); dateFrom != "" {
 		parsedDate, err := time.Parse("2006-01-02", dateFrom)
 		if err != nil {
@@ -305,9 +265,7 @@ func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 				"error": "Invalid date_from format. Use YYYY-MM-DD.",
 			})
 		}
-		filter["date"] = bson.M{"$gte": parsedDate}
-	} else {
-		filter["date"] = bson.M{"$gte": time.Now().Add(-30 * 24 * time.Hour)}
+		query.DateFrom = &parsedDate
 	}
 
 	if dateTo := c.Query("date_to"); dateTo != "" {
@@ -319,35 +277,14 @@ func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 			})
 		}
 		parsedDate = parsedDate.Add(24 * time.Hour) // Add one day
-		if _, exists := filter["date"]; exists {
-			filter["date"].(bson.M)["$lte"] = parsedDate
-		} else {
-			filter["date"] = bson.M{"$lte": parsedDate}
-		}
-	} else {
-
-		if _, exists := filter["date"]; exists {
-			filter["date"].(bson.M)["$lte"] = time.Now()
-		} else {
-			filter["date"] = bson.M{"$lte": time.Now()}
-		}
-
+		query.DateTo = &parsedDate
 	}
 
-	cursor, err := h.ProposalsCollection.Find(ctx, filter)
+	proposals, err := h.Repo.Find(ctx, query)
 	if err != nil {
 		log.Error().Err(err).Msg("get_proposals.find_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch proposals",
-		})
-	}
-	defer cursor.Close(ctx)
-
-	var proposals []models.ProductProposal
-	if err := cursor.All(ctx, &proposals); err != nil {
-		log.Error().Err(err).Msg("get_proposals.decode_failed")
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to decode proposals",
 		})
 	}
 
@@ -363,7 +300,7 @@ func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 		})
 	}
 
-	log.Info().Interface("filter", filter).Int("count", len(proposals)).Msg("get_proposals.success")
+	log.Info().Int("count", len(proposals)).Msg("get_proposals.success")
 	return c.JSON(response)
 }
 
@@ -384,21 +321,12 @@ func (h *ProposalsHandlers) GetProposalDetail(c *fiber.Ctx) error {
 	defer span.End()
 
 	proposalID := c.Query("proposal_id", c.Params("proposal_id"))
-	objectID, err := bson.ObjectIDFromHex(proposalID)
-	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("get_proposal_detail.invalid_id")
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid proposal ID",
-		})
-	}
 
-	var proposal models.ProductProposal
-	err = h.ProposalsCollection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&proposal)
+	// Bad id -> 400 (ErrInvalidInput); missing -> 404 (ErrNotFound), as before.
+	proposal, err := h.Repo.GetByID(ctx, proposalID)
 	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("get_proposal_detail.not_found")
-		return c.Status(http.StatusNotFound).JSON(fiber.Map{
-			"error": "Proposal not found",
-		})
+		log.Error().Err(err).Str("proposal_id", proposalID).Msg("get_proposal_detail.lookup_failed")
+		return models.RespondRepoError(c, err)
 	}
 
 	log.Info().Str("proposal_id", proposalID).Msg("get_proposal_detail.success")
@@ -440,13 +368,6 @@ func (h *ProposalsHandlers) EditProposal(c *fiber.Ctx) error {
 	defer span.End()
 
 	proposalID := c.Query("proposal_id", c.Params("proposal_id"))
-	objectID, err := bson.ObjectIDFromHex(proposalID)
-	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("edit_proposal.invalid_id")
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid proposal ID",
-		})
-	}
 
 	var req EditProposalRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -456,27 +377,27 @@ func (h *ProposalsHandlers) EditProposal(c *fiber.Ctx) error {
 		})
 	}
 
-	update := bson.M{"$set": bson.M{}}
-
-	if req.Name != "" {
-		update["$set"].(bson.M)["name"] = req.Name
-	}
-	if req.Branch != "" {
-		update["$set"].(bson.M)["branch"] = req.Branch
-	}
-	if req.Fulfilled != nil {
-		update["$set"].(bson.M)["fulfilled"] = *req.Fulfilled
-	}
-
-	_, err = h.ProposalsCollection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	// A malformed proposal ID surfaces as ErrInvalidInput (400 with the original
+	// message); any other write failure as 500 — both matching the prior codes.
+	err := h.Repo.Update(ctx, proposalID, arrivalsrepo.ProposalUpdate{
+		Name:      req.Name,
+		Branch:    req.Branch,
+		Fulfilled: req.Fulfilled,
+	})
 	if err != nil {
+		if errors.Is(err, repoerr.ErrInvalidInput) {
+			log.Error().Err(err).Str("proposal_id", proposalID).Msg("edit_proposal.invalid_id")
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid proposal ID",
+			})
+		}
 		log.Error().Err(err).Str("proposal_id", proposalID).Msg("edit_proposal.update_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update proposal",
 		})
 	}
 
-	log.Info().Str("proposal_id", proposalID).Interface("updates", update["$set"]).Msg("edit_proposal.success")
+	log.Info().Str("proposal_id", proposalID).Msg("edit_proposal.success")
 	return c.Redirect("/proposals", http.StatusFound)
 }
 
@@ -498,27 +419,17 @@ func (h *ProposalsHandlers) DeleteProposal(c *fiber.Ctx) error {
 	defer span.End()
 
 	proposalID := c.Query("proposal_id", c.Params("proposal_id"))
-	objectID, err := bson.ObjectIDFromHex(proposalID)
-	if err != nil {
-		log.Error().Err(err).Str("proposal_id", proposalID).Msg("delete_proposal.invalid_id")
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid proposal ID",
-		})
-	}
 
-	// Get the proposal first to check for image file
-	var proposal models.ProductProposal
-	err = h.ProposalsCollection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&proposal)
+	// Get the proposal first to check for image file (bad id -> 400, missing -> 404).
+	proposal, err := h.Repo.GetByID(ctx, proposalID)
 	if err != nil {
 		log.Error().Err(err).Str("proposal_id", proposalID).Msg("delete_proposal.not_found")
-		return c.Status(http.StatusNotFound).JSON(fiber.Map{
-			"error": "Proposal not found",
-		})
+		return models.RespondRepoError(c, err)
 	}
 
-	// Delete the proposal
-	_, err = h.ProposalsCollection.DeleteOne(ctx, bson.M{"_id": objectID})
-	if err != nil {
+	// Delete the proposal. The document was just found, so the malformed-id path
+	// is not reachable here; any failure is reported as 500, as before.
+	if err := h.Repo.Delete(ctx, proposalID); err != nil {
 		log.Error().Err(err).Str("proposal_id", proposalID).Msg("delete_proposal.delete_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to delete proposal",
@@ -573,33 +484,20 @@ func (h *ProposalsHandlers) FulfillProposals(c *fiber.Ctx) error {
 	}
 
 	proposalIDs := strings.Split(idsParam, ",")
-	var objectIDs []bson.ObjectID
-
-	for _, id := range proposalIDs {
-		objectID, err := bson.ObjectIDFromHex(strings.TrimSpace(id))
-		if err != nil {
-			log.Error().Err(err).Str("id", id).Msg("fulfill_proposals.invalid_id")
-			continue
-		}
-		objectIDs = append(objectIDs, objectID)
+	for i := range proposalIDs {
+		proposalIDs[i] = strings.TrimSpace(proposalIDs[i])
 	}
 
-	if len(objectIDs) == 0 {
-		log.Error().Str("branch", branch).Msg("fulfill_proposals.no_valid_ids")
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "No valid proposal IDs provided",
-		})
-	}
-
-	result, err := h.ProposalsCollection.UpdateMany(
-		ctx,
-		bson.M{
-			"_id":    bson.M{"$in": objectIDs},
-			"branch": branch,
-		},
-		bson.M{"$set": bson.M{"fulfilled": true}},
-	)
+	matched, modified, err := h.Repo.Fulfill(ctx, branch, proposalIDs)
 	if err != nil {
+		// No parseable IDs surfaces as ErrInvalidInput (400 with the original
+		// message/body); any other write failure as 500.
+		if errors.Is(err, repoerr.ErrInvalidInput) {
+			log.Error().Str("branch", branch).Msg("fulfill_proposals.no_valid_ids")
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "No valid proposal IDs provided",
+			})
+		}
 		log.Error().Err(err).Str("branch", branch).Msg("fulfill_proposals.update_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fulfill proposals",
@@ -609,15 +507,15 @@ func (h *ProposalsHandlers) FulfillProposals(c *fiber.Ctx) error {
 	log.Info().
 		Str("branch", branch).
 		Strs("proposal_ids", proposalIDs).
-		Int64("matched_count", result.MatchedCount).
-		Int64("modified_count", result.ModifiedCount).
+		Int64("matched_count", matched).
+		Int64("modified_count", modified).
 		Msg("fulfill_proposals.success")
 
 	return c.JSON(fiber.Map{
 		"acknowledged":        true,
 		"total_number_of_ids": len(proposalIDs),
-		"matched_count":       result.MatchedCount,
-		"modified_count":      result.ModifiedCount,
+		"matched_count":       matched,
+		"modified_count":      modified,
 		"upserted_id":         nil,
 	})
 }
@@ -636,21 +534,11 @@ func (h *ProposalsHandlers) GeneratePDF(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(h.ctx, "GeneratePDF")
 	defer span.End()
 
-	filter := bson.M{"fulfilled": false}
-	cursor, err := h.ProposalsCollection.Find(ctx, filter)
+	proposals, err := h.Repo.FindUnfulfilled(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("generate_pdf.find_failed")
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch proposals",
-		})
-	}
-	defer cursor.Close(ctx)
-
-	var proposals []models.ProductProposal
-	if err := cursor.All(ctx, &proposals); err != nil {
-		log.Error().Err(err).Msg("generate_pdf.decode_failed")
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to decode proposals",
 		})
 	}
 

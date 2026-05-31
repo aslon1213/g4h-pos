@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	pasetoware "github.com/gofiber/contrib/paseto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
