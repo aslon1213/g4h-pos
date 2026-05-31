@@ -1,23 +1,24 @@
 package storewishlist
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
+	wishlistrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/wishlist"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Controller handles the customer's wishlist (likelist).
+// Controller handles the customer's wishlist (likelist). Wishlist operations go
+// through Wishlist; moving an item to the cart reuses the cart repository.
 type Controller struct {
-	WishlistsCollection *mongo.Collection
-	CartsCollection     *mongo.Collection
-	DB                  *mongo.Database
+	Wishlist *wishlistrepo.WishlistRepository
+	Cart     *cartrepo.CartRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		WishlistsCollection: db.Collection("wishlists"),
-		CartsCollection:     db.Collection("carts"),
-		DB:                  db,
+		Wishlist: wishlistrepo.New(db),
+		Cart:     cartrepo.New(db),
 	}
 }
 

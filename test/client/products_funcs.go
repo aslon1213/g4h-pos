@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 )
 
 func DecodeProductOutput(response *http.Response) (models.ProductOutput, error) {

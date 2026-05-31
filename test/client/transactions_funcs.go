@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 )
 
 func (c *Client) GetTransactions(branch_id string, description string, amount_min uint32, amount_max uint32, payment_method models.PaymentMethod, type_of_transaction models.TransactionType, initiator_type models.InitiatorType, date_min time.Time, date_max time.Time, page int, count int) (resp *http.Response, output models.TransactionOutput, err error) {

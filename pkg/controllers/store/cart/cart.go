@@ -1,23 +1,21 @@
 package storecart
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Controller handles the authenticated customer's shopping cart.
+// Controller handles the authenticated customer's shopping cart. All cart
+// operations go through the cart repository held on Cart.
 type Controller struct {
-	CartsCollection    *mongo.Collection
-	ProductsCollection *mongo.Collection
-	DB                 *mongo.Database
+	Cart *cartrepo.CartRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		CartsCollection:    db.Collection("carts"),
-		ProductsCollection: db.Collection("products"),
-		DB:                 db,
+		Cart: cartrepo.New(db),
 	}
 }
 

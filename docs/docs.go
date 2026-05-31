@@ -2815,14 +2815,20 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/models.Output-models_Transaction"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -3492,7 +3498,7 @@ const docTemplate = `{
         },
         "/api/v1/store/auth/login": {
             "post": {
-                "description": "Authenticate a storefront customer and return a token",
+                "description": "Authenticate a storefront customer and return an access token",
                 "consumes": [
                     "application/json"
                 ],
@@ -3503,9 +3509,38 @@ const docTemplate = `{
                     "store-auth"
                 ],
                 "summary": "Login a storefront customer",
+                "parameters": [
+                    {
+                        "description": "Login credentials",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.LoginInput"
+                        }
+                    }
+                ],
                 "responses": {
-                    "501": {
-                        "description": "Not Implemented",
+                    "200": {
+                        "description": "token",
+                        "schema": {
+                            "$ref": "#/definitions/models.TokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid email or password",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -3520,6 +3555,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "PASETO tokens are stateless; logout is a client-side discard. This\nendpoint exists for symmetry and future token-revocation support.",
                 "produces": [
                     "application/json"
                 ],
@@ -3528,10 +3564,10 @@ const docTemplate = `{
                 ],
                 "summary": "Logout the current storefront customer",
                 "responses": {
-                    "501": {
-                        "description": "Not Implemented",
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.ErrorOutput"
+                            "$ref": "#/definitions/models.Output-models_MessageResponse"
                         }
                     }
                 }
@@ -3552,8 +3588,20 @@ const docTemplate = `{
                 ],
                 "summary": "Get current storefront customer profile",
                 "responses": {
-                    "501": {
-                        "description": "Not Implemented",
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_StoreCustomer"
+                        }
+                    },
+                    "404": {
+                        "description": "Customer not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -3566,6 +3614,9 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -3573,9 +3624,38 @@ const docTemplate = `{
                     "store-auth"
                 ],
                 "summary": "Update current storefront customer profile",
+                "parameters": [
+                    {
+                        "description": "Profile fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateProfileInput"
+                        }
+                    }
+                ],
                 "responses": {
-                    "501": {
-                        "description": "Not Implemented",
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_StoreCustomer"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Customer not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -3642,7 +3722,7 @@ const docTemplate = `{
         },
         "/api/v1/store/auth/register": {
             "post": {
-                "description": "Create a new storefront customer account",
+                "description": "Create a new storefront customer account and return an access token",
                 "consumes": [
                     "application/json"
                 ],
@@ -3653,9 +3733,38 @@ const docTemplate = `{
                     "store-auth"
                 ],
                 "summary": "Register a storefront customer",
+                "parameters": [
+                    {
+                        "description": "Registration details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RegisterInput"
+                        }
+                    }
+                ],
                 "responses": {
-                    "501": {
-                        "description": "Not Implemented",
+                    "201": {
+                        "description": "token",
+                        "schema": {
+                            "$ref": "#/definitions/models.TokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Email already registered",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -4851,6 +4960,45 @@ const docTemplate = `{
                 "ActivityTypeDeleteFinance"
             ]
         },
+        "models.Address": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "description": "e.g. \"Home\", \"Work\"",
+                    "type": "string"
+                },
+                "line1": {
+                    "type": "string"
+                },
+                "line2": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "postal_code": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                }
+            }
+        },
         "models.BNPL": {
             "type": "object",
             "properties": {
@@ -5274,6 +5422,17 @@ const docTemplate = `{
                 }
             }
         },
+        "models.LoginInput": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ManufacturerInfo": {
             "type": "object",
             "properties": {
@@ -5525,6 +5684,34 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Output-models_MessageResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.MessageResponse"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_StoreCustomer": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.StoreCustomer"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
         "models.Output-models_Supplier": {
             "type": "object",
             "properties": {
@@ -5767,6 +5954,23 @@ const docTemplate = `{
                 }
             }
         },
+        "models.RegisterInput": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
         "models.SalesSession": {
             "type": "object",
             "properties": {
@@ -5796,6 +6000,38 @@ const docTemplate = `{
                 },
                 "quantity": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.StoreCustomer": {
+            "type": "object",
+            "properties": {
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Address"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_verified": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -5980,6 +6216,17 @@ const docTemplate = `{
                 "TransactionTypeCredit",
                 "TransactionTypeDebit"
             ]
+        },
+        "models.UpdateProfileInput": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
         },
         "models.UserRegisterInput": {
             "type": "object",

@@ -1,23 +1,24 @@
 package storepromotions
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
+	promotionrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/promotion"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Controller handles storefront promotions and coupons.
+// Controller handles storefront promotions and coupons. Promotions/coupons are
+// read through Promotions; coupon validation reads the cart through Cart.
 type Controller struct {
-	PromotionsCollection *mongo.Collection
-	CartsCollection      *mongo.Collection
-	DB                   *mongo.Database
+	Promotions *promotionrepo.PromotionRepository
+	Cart       *cartrepo.CartRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		PromotionsCollection: db.Collection("promotions"),
-		CartsCollection:      db.Collection("carts"),
-		DB:                   db,
+		Promotions: promotionrepo.New(db),
+		Cart:       cartrepo.New(db),
 	}
 }
 

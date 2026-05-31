@@ -1,37 +1,36 @@
 package products
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	productsrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/products"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	s3provider "github.com/aslon1213/g4h_pos_erp/platform/s3"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
+// ProductsController exposes the admin products endpoints. All Mongo access goes
+// through Repo; the controller parses requests, performs S3 image storage, logs
+// audit activity, and renders the response envelope.
 type ProductsController struct {
-	ProductsCollection     *mongo.Collection
-	TransactionsCollection *mongo.Collection
-	FinanceCollection      *mongo.Collection
-	SupplierCollection     *mongo.Collection
-	ActivitiesCollection   *mongo.Collection
-	S3Client               *s3provider.S3Client
+	Repo                 *productsrepo.ProductsRepository
+	ActivitiesCollection *mongo.Collection
+	S3Client             *s3provider.S3Client
 }
 
 func New(db *mongo.Database) *ProductsController {
 	return &ProductsController{
-		ProductsCollection:     db.Collection("products"),
-		TransactionsCollection: db.Collection("transactions"),
-		FinanceCollection:      db.Collection("finance"),
-		SupplierCollection:     db.Collection("suppliers"),
-		ActivitiesCollection:   db.Collection("activities"),
+		Repo:                 productsrepo.New(db),
+		ActivitiesCollection: db.Collection("activities"),
 	}
 }
 
@@ -56,26 +55,16 @@ func (p *ProductsController) CreateProduct(c *fiber.Ctx) error {
 
 	if err := c.BodyParser(base); err != nil {
 		log.Error().Err(err).Msg("Failed to parse product body")
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	product := models.NewProduct(base)
-	// log activity
+	span.AddEvent("Inserting product", trace.WithAttributes(attribute.String("product", fmt.Sprintf("%v", base))))
+	log.Debug().Interface("product", base).Msg("Inserting product")
 
-	span.AddEvent("Inserting product", trace.WithAttributes(attribute.String("product", fmt.Sprintf("%v", product))))
-	log.Debug().Interface("product", product).Msg("Inserting product")
-
-	_, err := p.ProductsCollection.InsertOne(c.Context(), product)
+	product, err := p.Repo.Create(c.Context(), base)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert product")
-
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateProduct, product.ID, p.ActivitiesCollection)
 	log.Info().Str("id", product.ID).Msg("Successfully created product")
@@ -104,83 +93,29 @@ func (p *ProductsController) EditProduct(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Info().Str("id", id).Msg("Editing product")
 
-	product := &models.ProductBase{}
-	if err := c.BodyParser(product); err != nil {
+	base := &models.ProductBase{}
+	if err := c.BodyParser(base); err != nil {
 		log.Error().Err(err).Msg("Failed to parse product update body")
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	update := bson.M{
-		"$set": bson.M{},
-	}
-
-	if product.Name != "" {
-		update["$set"].(bson.M)["name"] = product.Name
-	}
-	if product.Description != "" {
-		update["$set"].(bson.M)["description"] = product.Description
-	}
-	if product.Manufacturer.Name != "" {
-		update["$set"].(bson.M)["manufacturer.name"] = product.Manufacturer.Name
-	}
-	if product.Manufacturer.Country != "" {
-		update["$set"].(bson.M)["manufacturer.country"] = product.Manufacturer.Country
-	}
-	if product.Manufacturer.Address != "" {
-		update["$set"].(bson.M)["manufacturer.address"] = product.Manufacturer.Address
-	}
-	if product.Manufacturer.Phone != "" {
-		update["$set"].(bson.M)["manufacturer.phone"] = product.Manufacturer.Phone
-	}
-	if product.Manufacturer.Email != "" {
-		update["$set"].(bson.M)["manufacturer.email"] = product.Manufacturer.Email
-	}
-	if product.Category != nil {
-		update["$set"].(bson.M)["category"] = product.Category
-	}
-	if product.SKU != "" {
-		update["$set"].(bson.M)["sku"] = product.SKU
-	}
-	if product.MinimumStockAlert != 0 {
-		update["$set"].(bson.M)["minimum_stock_alert"] = product.MinimumStockAlert
-	}
-
-	log.Debug().Interface("update", update).Msg("Updating product")
-	_, err := p.ProductsCollection.UpdateOne(c.Context(), bson.M{"_id": id}, update)
+	log.Debug().Interface("update", base).Msg("Updating product")
+	product, err := p.Repo.Update(c.Context(), id, base)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update product")
-
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
-	product_ := &models.Product{}
-	err = p.ProductsCollection.FindOne(c.Context(), bson.M{"_id": id}).Decode(product_)
-	if err != nil {
-
-		log.Error().Err(err).Msg("Failed to fetch updated product")
-
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	// log activity
 	middleware.LogActivityWithCtx(c, middleware.ActivityTypeEditProduct, fiber.Map{
 		"id":     id,
-		"update": update,
+		"update": base,
 		"user":   c.Locals("user").(string),
 	}, p.ActivitiesCollection)
 
 	log.Info().Str("id", id).Msg("Successfully updated product")
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(
-		[]models.Product{*product_},
+		[]models.Product{*product},
 	))
 }
 
@@ -201,14 +136,12 @@ func (p *ProductsController) DeleteProduct(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Info().Str("id", id).Msg("Deleting product")
 
-	_, err := p.ProductsCollection.DeleteOne(c.Context(), bson.M{"_id": id})
-	if err != nil {
+	// The original controller returned 200 even when no document matched, so a
+	// missing document (repoerr.ErrNotFound) is intentionally ignored here; only
+	// genuine errors surface as 500.
+	if err := p.Repo.Delete(c.Context(), id); err != nil && !errors.Is(err, repoerr.ErrNotFound) {
 		log.Error().Err(err).Msg("Failed to delete product")
-
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	log.Info().Str("id", id).Msg("Successfully deleted product")
@@ -242,14 +175,10 @@ func (p *ProductsController) GetProductByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Info().Str("id", id).Msg("Getting product by ID")
 
-	product := &models.Product{}
-	err := p.ProductsCollection.FindOne(c.Context(), bson.M{"_id": id}).Decode(product)
+	product, err := p.Repo.GetByID(c.Context(), id)
 	if err != nil {
 		log.Error().Err(err).Str("id", id).Msg("Product not found")
-		return c.Status(fiber.StatusNotFound).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Product not found",
-			Code:    fiber.StatusNotFound,
-		}))
+		return models.RespondError(c, fiber.StatusNotFound, "Product not found")
 	}
 
 	log.Info().Str("id", id).Msg("Successfully retrieved product")
@@ -281,47 +210,13 @@ func (p *ProductsController) QueryProducts(c *fiber.Ctx) error {
 
 	if err := c.QueryParser(&params); err != nil {
 		log.Error().Err(err).Msg("Failed to parse query parameters")
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusBadRequest,
-		}))
+		return models.RespondError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	pipeline := bson.D{}
-	if params.Name != "" {
-		pipeline = append(pipeline, bson.E{Key: "name", Value: bson.M{"$regex": params.Name, "$options": "i"}})
-	}
-
-	if params.BranchID != "" {
-		pipeline = append(pipeline, bson.E{Key: "quantity_distribution.place.id", Value: params.BranchID})
-	}
-	if params.SKU != "" {
-		pipeline = append(pipeline, bson.E{Key: "sku", Value: params.SKU})
-	}
-	if params.PriceMin != 0 {
-		pipeline = append(pipeline, bson.E{Key: "quantity_distribution.price", Value: bson.E{Key: "$gte", Value: params.PriceMin}})
-	}
-	if params.PriceMax != 0 {
-		pipeline = append(pipeline, bson.E{Key: "quantity_distribution.price", Value: bson.E{Key: "$lte", Value: params.PriceMax}})
-	}
-
-	log.Debug().Interface("pipeline", pipeline).Msg("Executing Find query")
-	cursor, err := p.ProductsCollection.Find(c.Context(), pipeline)
+	products, err := p.Repo.Query(c.Context(), params)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to execute Find query")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
-	products := []models.Product{}
-	if err := cursor.All(c.Context(), &products); err != nil {
-		log.Error().Err(err).Msg("Failed to decode products")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		log.Error().Err(err).Msg("Failed to query products")
+		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	log.Info().Int("count", len(products)).Msg("Successfully queried products")

@@ -1,23 +1,24 @@
 package storeorders
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
+	orderrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/order"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Controller handles checkout and the customer's orders.
+// Controller handles checkout and the customer's orders. Orders are persisted
+// through Orders; checkout/reorder reads the cart through Cart.
 type Controller struct {
-	OrdersCollection *mongo.Collection
-	CartsCollection  *mongo.Collection
-	DB               *mongo.Database
+	Orders *orderrepo.OrderRepository
+	Cart   *cartrepo.CartRepository
 }
 
 func New(db *mongo.Database) *Controller {
 	return &Controller{
-		OrdersCollection: db.Collection("orders"),
-		CartsCollection:  db.Collection("carts"),
-		DB:               db,
+		Orders: orderrepo.New(db),
+		Cart:   cartrepo.New(db),
 	}
 }
 

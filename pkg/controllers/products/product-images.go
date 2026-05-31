@@ -7,7 +7,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // UploadProductImage godoc
@@ -54,13 +53,8 @@ func (p *ProductsController) UploadProductImage(c *fiber.Ctx) error {
 		return err
 	}
 
-	// Update product in database with new image key
-	update := bson.M{
-		"$push": bson.M{
-			"images": key,
-		},
-	}
-	_, err = p.ProductsCollection.UpdateOne(c.Context(), bson.M{"_id": productID}, update)
+	// Update product in database with new image key (S3 upload stays above).
+	err = p.Repo.AddImage(c.Context(), productID, key)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update product with image")
 		return err
@@ -101,13 +95,8 @@ func (p *ProductsController) DeleteProductImage(c *fiber.Ctx) error {
 		return err
 	}
 
-	// Remove image key from product in database
-	update := bson.M{
-		"$pull": bson.M{
-			"images": key,
-		},
-	}
-	_, err = p.ProductsCollection.UpdateOne(c.Context(), bson.M{"_id": productID}, update)
+	// Remove image key from product in database (S3 deletion stays above).
+	err = p.Repo.RemoveImage(c.Context(), productID, key)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update product after image deletion")
 		return err

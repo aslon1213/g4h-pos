@@ -92,6 +92,32 @@ definitions:
     - ActivityTypeCreateFinance
     - ActivityTypeEditFinance
     - ActivityTypeDeleteFinance
+  models.Address:
+    properties:
+      city:
+        type: string
+      country:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      is_default:
+        type: boolean
+      label:
+        description: e.g. "Home", "Work"
+        type: string
+      line1:
+        type: string
+      line2:
+        type: string
+      phone:
+        type: string
+      postal_code:
+        type: string
+      region:
+        type: string
+    type: object
   models.BNPL:
     properties:
       branch_id:
@@ -376,6 +402,13 @@ definitions:
       total:
         type: integer
     type: object
+  models.LoginInput:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
   models.ManufacturerInfo:
     properties:
       address:
@@ -535,6 +568,24 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/models.JournalWithTransactionID'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_MessageResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.MessageResponse'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_StoreCustomer:
+    properties:
+      data:
+        $ref: '#/definitions/models.StoreCustomer'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -708,6 +759,17 @@ definitions:
       name:
         type: string
     type: object
+  models.RegisterInput:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+    type: object
   models.SalesSession:
     properties:
       branch_id:
@@ -728,6 +790,27 @@ definitions:
         type: integer
       quantity:
         type: integer
+    type: object
+  models.StoreCustomer:
+    properties:
+      addresses:
+        items:
+          $ref: '#/definitions/models.Address'
+        type: array
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.Supplier:
     properties:
@@ -851,6 +934,13 @@ definitions:
     x-enum-varnames:
     - TransactionTypeCredit
     - TransactionTypeDebit
+  models.UpdateProfileInput:
+    properties:
+      name:
+        type: string
+      phone:
+        type: string
+    type: object
   models.UserRegisterInput:
     properties:
       branch:
@@ -2669,12 +2759,16 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Created
           schema:
             $ref: '#/definitions/models.Output-models_Transaction'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
         "500":
@@ -3102,12 +3196,31 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticate a storefront customer and return a token
+      description: Authenticate a storefront customer and return an access token
+      parameters:
+      - description: Login credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: token
+          schema:
+            $ref: '#/definitions/models.TokenResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "401":
+          description: Invalid email or password
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Login a storefront customer
@@ -3115,13 +3228,16 @@ paths:
       - store-auth
   /api/v1/store/auth/logout:
     post:
+      description: |-
+        PASETO tokens are stateless; logout is a client-side discard. This
+        endpoint exists for symmetry and future token-revocation support.
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
           schema:
-            $ref: '#/definitions/models.ErrorOutput'
+            $ref: '#/definitions/models.Output-models_MessageResponse'
       security:
       - BearerAuth: []
       summary: Logout the current storefront customer
@@ -3132,8 +3248,16 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_StoreCustomer'
+        "404":
+          description: Customer not found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3142,11 +3266,32 @@ paths:
       tags:
       - store-auth
     put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Profile fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateProfileInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_StoreCustomer'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Customer not found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3194,12 +3339,31 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new storefront customer account
+      description: Create a new storefront customer account and return an access token
+      parameters:
+      - description: Registration details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "201":
+          description: token
+          schema:
+            $ref: '#/definitions/models.TokenResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Email already registered
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Register a storefront customer

@@ -36,3 +36,16 @@ type SupplierOutputSingle struct {
 	Data  Supplier `json:"data" bson:"data"`
 	Error []Error  `json:"error" bson:"error"`
 }
+
+// SupplierQueryParams are the filters accepted by the suppliers list endpoint
+// (bound from the query string). Branch may be a branch id or name; the
+// repository resolves it to a branch id.
+type SupplierQueryParams struct {
+	Name    string `query:"name"`
+	INN     string `query:"inn"`
+	Branch  string `query:"branch"`
+	Email   string `query:"email"`
+	Phone   string `query:"phone"`
+	Address string `query:"address"`
+	Notes   string `query:"notes"`
+}

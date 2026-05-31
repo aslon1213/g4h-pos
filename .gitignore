@@ -48,3 +48,5 @@ dump/
 caddy_data/
 tmp
 notebooks/
+.DS_Store
+scripts/restore_journals.js

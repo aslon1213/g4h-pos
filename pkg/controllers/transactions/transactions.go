@@ -3,7 +3,7 @@ package transactions
 import (
 	"context"
 
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"

@@ -14,7 +14,7 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/test/client"
 	"go.mongodb.org/mongo-driver/bson"
 
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
