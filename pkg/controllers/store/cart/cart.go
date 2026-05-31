@@ -1,7 +1,7 @@
 package storecart
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/v2/mongo"

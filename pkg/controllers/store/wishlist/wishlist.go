@@ -1,7 +1,7 @@
 package storewishlist
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	wishlistrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/wishlist"
 	"github.com/gofiber/fiber/v2"

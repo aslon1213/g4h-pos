@@ -1,7 +1,7 @@
 package storecatalog
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	catalogrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/catalog"
 	productrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/product"
 	"github.com/gofiber/fiber/v2"

@@ -1,7 +1,7 @@
 package storeorders
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	orderrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/order"
 	"github.com/gofiber/fiber/v2"

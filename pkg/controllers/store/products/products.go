@@ -1,7 +1,7 @@
 package storeproducts
 
 import (
-	models "github.com/aslon1213/g4h_pos_erp/pkg/repository"
+	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	productrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/product"
 	reviewrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/review"
 	"github.com/gofiber/fiber/v2"
