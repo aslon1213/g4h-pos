@@ -2,15 +2,13 @@ package models
 
 import (
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Branch struct {
-	Name     string `bson:"name" json:"name"`
-	Location string `bson:"location" json:"location"`
-	Phone    string `bson:"phone" json:"phone"`
-	ID       string `bson:"_id" json:"id"`
+	Name     string `bson:"name" json:"name" gorm:"column:name"`
+	Location string `bson:"location" json:"location" gorm:"column:location"`
+	Phone    string `bson:"phone" json:"phone" gorm:"column:phone"`
+	ID       string `bson:"_id" json:"id" gorm:"column:id"`
 }
 
 func DoesBranchExist(branch string) bool {
@@ -37,23 +35,25 @@ var Branch_names map[string]Branch = map[string]Branch{
 }
 
 type JournalBase struct {
-	Branch          Branch        `bson:"branch" json:"branch"`
-	Date            time.Time     `bson:"date" json:"date"`
-	ID              bson.ObjectID `bson:"_id" json:"id"`
-	Shift_is_closed bool          `bson:"shift_is_closed" json:"shift_is_closed"`
-	Terminal_income uint32        `bson:"terminal_income" json:"terminal_income"`
-	Cash_left       uint32        `bson:"cash_left" json:"cash_left"`
-	Total           uint32        `bson:"total" json:"total"`
+	Branch          Branch    `bson:"branch" json:"branch" gorm:"embedded;embeddedPrefix:branch_"`
+	Date            time.Time `bson:"date" json:"date" gorm:"column:date"`
+	ID              string    `bson:"_id" json:"id" gorm:"column:id;primaryKey"`
+	Shift_is_closed bool      `bson:"shift_is_closed" json:"shift_is_closed" gorm:"column:shift_is_closed"`
+	Terminal_income uint32    `bson:"terminal_income" json:"terminal_income" gorm:"column:terminal_income"`
+	Cash_left       uint32    `bson:"cash_left" json:"cash_left" gorm:"column:cash_left"`
+	Total           uint32    `bson:"total" json:"total" gorm:"column:total"`
 }
 
 type Journal struct {
-	JournalBase `bson:",inline"`
-	Operations  []Transaction `bson:"operations" json:"operations"`
+	JournalBase `bson:",inline" gorm:"embedded"`
+	Operations  []Transaction `bson:"operations" json:"operations" gorm:"-"`
 }
+
+func (Journal) TableName() string { return "journals" }
 
 type JournalWithTransactionID struct {
 	JournalBase `bson:",inline"`
-	Operations  []string `bson:"operations" json:"operations"`
+	Operations  []string `bson:"operations" json:"operations" gorm:"-"`
 }
 
 type NewJournalEntryInput struct {

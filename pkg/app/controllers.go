@@ -22,7 +22,7 @@ import (
 	pasetoware "github.com/gofiber/contrib/paseto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 type Controllers struct {
@@ -43,7 +43,8 @@ type Controllers struct {
 	Store        *store.Controllers
 }
 
-func NewControllers(db *mongo.Database) *Controllers {
+// NewControllers builds every controller from the PostgreSQL (GORM) handle.
+func NewControllers(db *gorm.DB) *Controllers {
 	log.Debug().Msg("Initializing new controllers")
 	middleware := middleware.New(db)
 	controllers := &Controllers{

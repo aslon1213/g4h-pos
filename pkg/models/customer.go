@@ -11,18 +11,21 @@ import "time"
 
 // Address is a single entry in a customer's address book.
 type Address struct {
-	ID         string `json:"id" bson:"id"`
-	Label      string `json:"label" bson:"label"` // e.g. "Home", "Work"
-	FullName   string `json:"full_name" bson:"full_name"`
-	Phone      string `json:"phone" bson:"phone"`
-	Line1      string `json:"line1" bson:"line1"`
-	Line2      string `json:"line2" bson:"line2"`
-	City       string `json:"city" bson:"city"`
-	Region     string `json:"region" bson:"region"`
-	PostalCode string `json:"postal_code" bson:"postal_code"`
-	Country    string `json:"country" bson:"country"`
-	IsDefault  bool   `json:"is_default" bson:"is_default"`
+	ID         string `json:"id" bson:"id" gorm:"column:id;primaryKey"`
+	CustomerID string `json:"customer_id" bson:"customer_id" gorm:"column:customer_id"`
+	Label      string `json:"label" bson:"label" gorm:"column:label"` // e.g. "Home", "Work"
+	FullName   string `json:"full_name" bson:"full_name" gorm:"column:full_name"`
+	Phone      string `json:"phone" bson:"phone" gorm:"column:phone"`
+	Line1      string `json:"line1" bson:"line1" gorm:"column:line1"`
+	Line2      string `json:"line2" bson:"line2" gorm:"column:line2"`
+	City       string `json:"city" bson:"city" gorm:"column:city"`
+	Region     string `json:"region" bson:"region" gorm:"column:region"`
+	PostalCode string `json:"postal_code" bson:"postal_code" gorm:"column:postal_code"`
+	Country    string `json:"country" bson:"country" gorm:"column:country"`
+	IsDefault  bool   `json:"is_default" bson:"is_default" gorm:"column:is_default"`
 }
+
+func (Address) TableName() string { return "addresses" }
 
 // StoreCustomer is a storefront account (separate from the staff-managed POS
 // `customers` collection). Stored in the `store_customers` collection.
@@ -30,16 +33,18 @@ type Address struct {
 // PasswordHash is never serialised to JSON (json:"-"); it is written/read only
 // by the customer repository for authentication.
 type StoreCustomer struct {
-	ID            string    `json:"id" bson:"_id"`
-	Email         string    `json:"email" bson:"email"`
-	Phone         string    `json:"phone" bson:"phone"`
-	Name          string    `json:"name" bson:"name"`
-	PasswordHash  string    `json:"-" bson:"password_hash"`
-	EmailVerified bool      `json:"email_verified" bson:"email_verified"`
-	Addresses     []Address `json:"addresses" bson:"addresses"`
-	CreatedAt     time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" bson:"updated_at"`
+	ID            string    `json:"id" bson:"_id" gorm:"column:id;primaryKey"`
+	Email         string    `json:"email" bson:"email" gorm:"column:email"`
+	Phone         string    `json:"phone" bson:"phone" gorm:"column:phone"`
+	Name          string    `json:"name" bson:"name" gorm:"column:name"`
+	PasswordHash  string    `json:"-" bson:"password_hash" gorm:"column:password_hash"`
+	EmailVerified bool      `json:"email_verified" bson:"email_verified" gorm:"column:email_verified"`
+	Addresses     []Address `json:"addresses" bson:"addresses" gorm:"-"`
+	CreatedAt     time.Time `json:"created_at" bson:"created_at" gorm:"column:created_at"`
+	UpdatedAt     time.Time `json:"updated_at" bson:"updated_at" gorm:"column:updated_at"`
 }
+
+func (StoreCustomer) TableName() string { return "store_customers" }
 
 // ---- request DTOs ----
 

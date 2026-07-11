@@ -53,8 +53,9 @@ func DashboardRoutes(router *fiber.App, dashboardController *analytics.Dashboard
 // token guard. It MUST be called before the /api group middleware is registered
 // in SetupRoutes, otherwise these routes would require a token to reach.
 func PublicAuthRoutes(router *fiber.App, authController *auth.AuthControllers, middleware *middleware.Middlewares) {
-	router.Post("/api/v1/admin/auth/login", authController.Login) // login -- public, activity logged here if succesfull
-	// router.Post("/api/v1/admin/auth/register", authController.Register) // register -- disabled
+	router.Post("/api/v1/admin/auth/login", authController.Login)       // login -- public, activity logged here if succesfull
+	router.Post("/api/v1/admin/auth/refresh", authController.Refresh)   // refresh -- public: authed by the refresh token in the body, not the access-token guard
+	router.Post("/api/v1/admin/auth/register", authController.Register) // register -- disabled
 }
 
 func AuthRoutes(router *fiber.App, authController *auth.AuthControllers, middleware *middleware.Middlewares) {

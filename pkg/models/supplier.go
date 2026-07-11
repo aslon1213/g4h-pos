@@ -3,29 +3,34 @@ package models
 import "time"
 
 type SupplierBase struct {
-	Name    string `json:"name" bson:"name"`
-	Address string `json:"address" bson:"address"`
-	Phone   string `json:"phone" bson:"phone"`
-	Email   string `json:"email,omitempty" bson:"email,omitempty"`
-	INN     string `json:"inn,omitempty" bson:"inn,omitempty"`
-	Notes   string `json:"notes,omitempty" bson:"notes,omitempty"`
-	Branch  string `json:"branch" bson:"branch"`
+	Name    string `json:"name" bson:"name" gorm:"column:name"`
+	Address string `json:"address" bson:"address" gorm:"column:address"`
+	Phone   string `json:"phone" bson:"phone" gorm:"column:phone"`
+	Email   string `json:"email,omitempty" bson:"email,omitempty" gorm:"column:email"`
+	INN     string `json:"inn,omitempty" bson:"inn,omitempty" gorm:"column:inn"`
+	Notes   string `json:"notes,omitempty" bson:"notes,omitempty" gorm:"column:notes"`
+	Branch  string `json:"branch" bson:"branch" gorm:"column:branch_id"` // holds a branch id (FK)
 }
 
+// FinancialData is flattened onto the suppliers row (balance/total_income/
+// total_expenses). The embedded transactions are NOT a column: they live in the
+// transactions table (supplier_id) and are attached on read by the repository.
 type FinancialData struct {
-	Balance       int32         `json:"balance" bson:"balance"`
-	Transactions  []Transaction `json:"transactions" bson:"transactions"`
-	TotalIncome   int32         `json:"total_income" bson:"total_income"`
-	TotalExpenses int32         `json:"total_expenses" bson:"total_expenses"`
+	Balance       int32         `json:"balance" bson:"balance" gorm:"column:balance"`
+	Transactions  []Transaction `json:"transactions" bson:"transactions" gorm:"-"`
+	TotalIncome   int32         `json:"total_income" bson:"total_income" gorm:"column:total_income"`
+	TotalExpenses int32         `json:"total_expenses" bson:"total_expenses" gorm:"column:total_expenses"`
 }
 
 type Supplier struct {
-	SupplierBase  `bson:",inline"`
-	ID            string        `json:"id" bson:"_id"`
-	FinancialData FinancialData `json:"financial_data" bson:"financial_data"`
-	CreatedAt     time.Time     `json:"created_at" bson:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at" bson:"updated_at"`
+	SupplierBase  `bson:",inline" gorm:"embedded"`
+	ID            string        `json:"id" bson:"_id" gorm:"column:id;primaryKey"`
+	FinancialData FinancialData `json:"financial_data" bson:"financial_data" gorm:"embedded"`
+	CreatedAt     time.Time     `json:"created_at" bson:"created_at" gorm:"column:created_at"`
+	UpdatedAt     time.Time     `json:"updated_at" bson:"updated_at" gorm:"column:updated_at"`
 }
+
+func (Supplier) TableName() string { return "suppliers" }
 
 type SupplierOutput struct {
 	Data  []Supplier `json:"data" bson:"data"`

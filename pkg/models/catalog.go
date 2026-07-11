@@ -5,27 +5,31 @@ import "time"
 // Category is a node in the catalog category tree. ParentID is empty for a
 // top-level category. Stored in the `categories` collection.
 type Category struct {
-	ID          string    `json:"id" bson:"_id"`
-	Name        string    `json:"name" bson:"name"`
-	Slug        string    `json:"slug" bson:"slug"`
-	ParentID    string    `json:"parent_id" bson:"parent_id"`
-	Description string    `json:"description" bson:"description"`
-	Image       string    `json:"image" bson:"image"`
-	SortOrder   int       `json:"sort_order" bson:"sort_order"`
-	IsActive    bool      `json:"is_active" bson:"is_active"`
-	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" bson:"updated_at"`
+	ID          string    `json:"id" bson:"_id" gorm:"column:id;primaryKey"`
+	Name        string    `json:"name" bson:"name" gorm:"column:name"`
+	Slug        string    `json:"slug" bson:"slug" gorm:"column:slug"`
+	ParentID    string    `json:"parent_id" bson:"parent_id" gorm:"column:parent_id"`
+	Description string    `json:"description" bson:"description" gorm:"column:description"`
+	Image       string    `json:"image" bson:"image" gorm:"column:image"`
+	SortOrder   int       `json:"sort_order" bson:"sort_order" gorm:"column:sort_order"`
+	IsActive    bool      `json:"is_active" bson:"is_active" gorm:"column:is_active"`
+	CreatedAt   time.Time `json:"created_at" bson:"created_at" gorm:"column:created_at"`
+	UpdatedAt   time.Time `json:"updated_at" bson:"updated_at" gorm:"column:updated_at"`
 }
+
+func (Category) TableName() string { return "categories" }
 
 // Brand / manufacturer used to filter the catalog. Stored in the `brands`
 // collection (and also derivable from product manufacturer data).
 type Brand struct {
-	ID      string `json:"id" bson:"_id"`
-	Name    string `json:"name" bson:"name"`
-	Slug    string `json:"slug" bson:"slug"`
-	Logo    string `json:"logo" bson:"logo"`
-	Country string `json:"country" bson:"country"`
+	ID      string `json:"id" bson:"_id" gorm:"column:id;primaryKey"`
+	Name    string `json:"name" bson:"name" gorm:"column:name"`
+	Slug    string `json:"slug" bson:"slug" gorm:"column:slug"`
+	Logo    string `json:"logo" bson:"logo" gorm:"column:logo"`
+	Country string `json:"country" bson:"country" gorm:"column:country"`
 }
+
+func (Brand) TableName() string { return "brands" }
 
 // CategoryInput is the body for admin create/update of a catalog category
 // (POST/PUT /api/v1/admin/catalog/categories).
