@@ -9,16 +9,16 @@ import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 )
 
-func DecodeProductOutput(response *http.Response) (models.ProductOutput, error) {
-	var productOutput models.ProductOutput
-	err := json.NewDecoder(response.Body).Decode(&productOutput)
+func DecodeProduct(response *http.Response) (models.Product, error) {
+	var Product models.Product
+	err := json.NewDecoder(response.Body).Decode(&Product)
 	if err != nil {
-		return models.ProductOutput{}, err
+		return models.Product{}, err
 	}
-	return productOutput, nil
+	return Product, nil
 }
 
-func (c *Client) CreateProduct(base *models.ProductBase) (*http.Response, models.ProductOutput, error) {
+func (c *Client) CreateProduct(base *models.ProductBase) (*http.Response, models.Product, error) {
 
 	body, err := json.Marshal(base)
 
@@ -34,19 +34,19 @@ func (c *Client) CreateProduct(base *models.ProductBase) (*http.Response, models
 		true,
 	)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
 	// decode response
-	productOutput, err := DecodeProductOutput(resp)
+	Product, err := DecodeProduct(resp)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
-	return resp, productOutput, nil
+	return resp, Product, nil
 
 }
 
 // EDIT
-func (c *Client) EditProduct(id string, base *models.ProductBase) (*http.Response, models.ProductOutput, error) {
+func (c *Client) EditProduct(id string, base *models.ProductBase) (*http.Response, models.Product, error) {
 	body, err := json.Marshal(base)
 	if err != nil {
 		log.Fatal(err)
@@ -59,18 +59,18 @@ func (c *Client) EditProduct(id string, base *models.ProductBase) (*http.Respons
 		true,
 	)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
 	// decode response
-	productOutput, err := DecodeProductOutput(resp)
+	Product, err := DecodeProduct(resp)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
-	return resp, productOutput, nil
+	return resp, Product, nil
 }
 
 // DELETE
-func (c *Client) DeleteProduct(id string) (*http.Response, models.ProductOutput, error) {
+func (c *Client) DeleteProduct(id string) (*http.Response, models.Product, error) {
 	resp, err := c.MakeRequest(
 		"DELETE",
 		"/api/products/"+id,
@@ -79,19 +79,19 @@ func (c *Client) DeleteProduct(id string) (*http.Response, models.ProductOutput,
 		true,
 	)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
 	// decode response
-	productOutput, err := DecodeProductOutput(resp)
+	Product, err := DecodeProduct(resp)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
-	return resp, productOutput, nil
+	return resp, Product, nil
 }
 
 // Query
 
-func (c *Client) QueryProducts(params *models.ProductQueryParams) (*http.Response, models.ProductOutput, error) {
+func (c *Client) QueryProducts(params *models.ProductQueryParams) (*http.Response, models.Product, error) {
 	// construct query string
 	query := ""
 	if params.BranchID != "" {
@@ -117,12 +117,12 @@ func (c *Client) QueryProducts(params *models.ProductQueryParams) (*http.Respons
 		true,
 	)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
 	// decode response
-	productOutput, err := DecodeProductOutput(resp)
+	Product, err := DecodeProduct(resp)
 	if err != nil {
-		return nil, models.ProductOutput{}, err
+		return nil, models.Product{}, err
 	}
-	return resp, productOutput, nil
+	return resp, Product, nil
 }

@@ -18,6 +18,13 @@ definitions:
     - password
     - username
     type: object
+  auth.RefreshInput:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
   middleware.Activity:
     properties:
       action:
@@ -1124,6 +1131,25 @@ definitions:
       phone:
         type: string
     type: object
+  models.TokenPairResponse:
+    properties:
+      access_token:
+        type: string
+      data:
+        description: = AccessToken; backward-compat alias for older clients
+        type: string
+      expires_at:
+        description: access token expiry
+        type: string
+      refresh_expires_at:
+        description: refresh token expiry
+        type: string
+      refresh_token:
+        type: string
+      token_type:
+        description: '"Bearer"'
+        type: string
+    type: object
   models.TokenResponse:
     properties:
       aud:
@@ -1380,7 +1406,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticate user and return a token
+      description: Authenticate user and return an access + refresh token pair
       parameters:
       - description: User credentials
         in: body
@@ -1392,9 +1418,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: token
+          description: access + refresh tokens
           schema:
-            $ref: '#/definitions/models.TokenResponse'
+            $ref: '#/definitions/models.TokenPairResponse'
         "401":
           description: Unauthorized
           schema:
@@ -1423,6 +1449,44 @@ paths:
       security:
       - BearerAuth: []
       summary: Get user info
+      tags:
+      - auth
+  /api/v1/admin/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Exchange a valid refresh token for a brand-new access + refresh
+        token pair (the old refresh token is rotated out). This endpoint is NOT guarded
+        by the access-token middleware — it authenticates via the refresh token in
+        the body. Once the refresh token itself expires the request is rejected with
+        401 and the user must log in again.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RefreshInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: new access + refresh tokens
+          schema:
+            $ref: '#/definitions/models.TokenPairResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Refresh the token pair
       tags:
       - auth
   /api/v1/admin/bnpl:

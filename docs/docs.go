@@ -189,7 +189,7 @@ const docTemplate = `{
         },
         "/api/v1/admin/auth/login": {
             "post": {
-                "description": "Authenticate user and return a token",
+                "description": "Authenticate user and return an access + refresh token pair",
                 "consumes": [
                     "application/json"
                 ],
@@ -213,9 +213,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "token",
+                        "description": "access + refresh tokens",
                         "schema": {
-                            "$ref": "#/definitions/models.TokenResponse"
+                            "$ref": "#/definitions/models.TokenPairResponse"
                         }
                     },
                     "401": {
@@ -253,6 +253,58 @@ const docTemplate = `{
                         "description": "message",
                         "schema": {
                             "$ref": "#/definitions/models.MessageResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/auth/refresh": {
+            "post": {
+                "description": "Exchange a valid refresh token for a brand-new access + refresh token pair (the old refresh token is rotated out). This endpoint is NOT guarded by the access-token middleware — it authenticates via the refresh token in the body. Once the refresh token itself expires the request is rejected with 401 and the user must log in again.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Refresh the token pair",
+                "parameters": [
+                    {
+                        "description": "Refresh token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RefreshInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "new access + refresh tokens",
+                        "schema": {
+                            "$ref": "#/definitions/models.TokenPairResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
                         }
                     },
                     "500": {
@@ -5565,6 +5617,17 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.RefreshInput": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
         "middleware.Activity": {
             "type": "object",
             "properties": {
@@ -7189,6 +7252,33 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TokenPairResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "data": {
+                    "description": "= AccessToken; backward-compat alias for older clients",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "description": "access token expiry",
+                    "type": "string"
+                },
+                "refresh_expires_at": {
+                    "description": "refresh token expiry",
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "token_type": {
+                    "description": "\"Bearer\"",
                     "type": "string"
                 }
             }
