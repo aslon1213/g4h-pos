@@ -13,8 +13,8 @@ import (
 	pasetoware "github.com/gofiber/contrib/paseto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // Controller handles storefront customer authentication against the
@@ -26,7 +26,7 @@ type Controller struct {
 	TokenExpiryHours   int
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	config, err := configs.LoadConfig(".")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")

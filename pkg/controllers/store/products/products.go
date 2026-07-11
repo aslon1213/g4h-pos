@@ -5,7 +5,7 @@ import (
 	productrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/product"
 	reviewrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/review"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles the public storefront product browse surface (read-only
@@ -16,7 +16,7 @@ type Controller struct {
 	Reviews  *reviewrepo.ReviewRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Products: productrepo.New(db),
 		Reviews:  reviewrepo.New(db),

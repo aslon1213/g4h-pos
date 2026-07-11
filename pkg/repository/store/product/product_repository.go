@@ -1,9 +1,9 @@
 // Package product is the read-only repository backing the storefront product
-// browse surface. It reads the existing `products` collection (written by the
-// staff side) and returns the full models.Product, enriched on read with its
-// catalog info (resolved categories + brand) and review info (recent reviews;
-// the rating/review_count aggregates are denormalized on the product document
-// and maintained by the review repository).
+// browse surface. It reads the existing `products` table (written by the staff
+// side) and returns the full models.Product, enriched on read with its catalog
+// info (resolved categories from product_categories + brand) and review info
+// (recent reviews; the rating/review_count aggregates are denormalized on the
+// product row and maintained by the review repository).
 package product
 
 import (
@@ -12,82 +12,74 @@ import (
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"gorm.io/gorm"
 )
 
 // detailReviewLimit caps how many recent reviews are attached to a product
 // detail response.
 const detailReviewLimit = 5
 
-// ProductRepository owns reads over the products collection plus the catalog
-// (categories, brands) and reviews collections used to enrich a product on read.
+// ProductRepository reads over the products table plus the catalog
+// (categories, brands, product_categories), product_stock and reviews tables
+// used to enrich a product on read.
 type ProductRepository struct {
-	products   *mongo.Collection
-	categories *mongo.Collection
-	brands     *mongo.Collection
-	reviews    *mongo.Collection
+	db *gorm.DB
 }
 
-// New builds the repository and ensures browse indexes exist.
-func New(db *mongo.Database) *ProductRepository {
-	products := db.Collection("products")
-	_, _ = products.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
-		{Keys: bson.D{{Key: "category", Value: 1}}},
-		{Keys: bson.D{{Key: "brand_id", Value: 1}}},
-		{Keys: bson.D{{Key: "sku", Value: 1}}},
-	})
-	return &ProductRepository{
-		products:   products,
-		categories: db.Collection("categories"),
-		brands:     db.Collection("brands"),
-		reviews:    db.Collection("reviews"),
-	}
+// New builds the repository.
+func New(db *gorm.DB) *ProductRepository {
+	return &ProductRepository{db: db}
 }
 
-// buildFilter translates list/search params into a mongo filter.
-func buildFilter(p models.ProductListParams) bson.M {
-	filter := bson.M{}
+// applyFilters translates list/search params into where-conditions on a product
+// query. Category and price live in child tables (product_categories,
+// product_stock) so those filters use correlated subqueries.
+func (r *ProductRepository) applyFilters(q gorm.ChainInterface[models.Product], p models.ProductListParams) gorm.ChainInterface[models.Product] {
 	if p.Query != "" {
-		filter["name"] = bson.M{"$regex": p.Query, "$options": "i"}
+		q = q.Where("name ILIKE ?", "%"+p.Query+"%")
 	}
 	if p.Category != "" {
-		filter["category"] = p.Category
+		q = q.Where("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = products.id AND pc.category_id = ?)", p.Category)
 	}
 	if p.Brand != "" {
-		filter["brand_id"] = p.Brand
+		q = q.Where("brand_id = ?", p.Brand)
 	}
 	if p.PriceMin != 0 || p.PriceMax != 0 {
-		price := bson.M{}
+		cond := "EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id"
+		args := []interface{}{}
 		if p.PriceMin != 0 {
-			price["$gte"] = p.PriceMin
+			cond += " AND ps.price >= ?"
+			args = append(args, p.PriceMin)
 		}
 		if p.PriceMax != 0 {
-			price["$lte"] = p.PriceMax
+			cond += " AND ps.price <= ?"
+			args = append(args, p.PriceMax)
 		}
-		filter["quantity_distribution.price"] = price
+		cond += ")"
+		q = q.Where(cond, args...)
 	}
-	return filter
+	return q
 }
 
-// sortDoc maps a sort token to a mongo sort document (default: newest first).
-func sortDoc(sort string) bson.D {
+// sortExpr maps a sort token to an ORDER BY expression (default: newest first).
+// Price sorting keys off the min/max stock price via a correlated subquery,
+// mirroring how Mongo sorted on the quantity_distribution.price array.
+func sortExpr(sort string) string {
 	switch sort {
 	case "newest":
-		return bson.D{{Key: "created_at", Value: -1}}
+		return "created_at DESC"
 	case "name_asc":
-		return bson.D{{Key: "name", Value: 1}}
+		return "name ASC"
 	case "name_desc":
-		return bson.D{{Key: "name", Value: -1}}
+		return "name DESC"
 	case "rating_desc":
-		return bson.D{{Key: "rating", Value: -1}}
+		return "rating DESC"
 	case "price_asc":
-		return bson.D{{Key: "quantity_distribution.price", Value: 1}}
+		return "(SELECT MIN(price) FROM product_stock ps WHERE ps.product_id = products.id) ASC"
 	case "price_desc":
-		return bson.D{{Key: "quantity_distribution.price", Value: -1}}
+		return "(SELECT MAX(price) FROM product_stock ps WHERE ps.product_id = products.id) DESC"
 	default:
-		return bson.D{{Key: "created_at", Value: -1}}
+		return "created_at DESC"
 	}
 }
 
@@ -96,23 +88,16 @@ func sortDoc(sort string) bson.D {
 // are attached only on detail reads, not in lists.
 func (r *ProductRepository) List(ctx context.Context, p models.ProductListParams) (*models.PagedProducts, error) {
 	page, count := normalizePaging(p.Page, p.Count)
-	filter := buildFilter(p)
 
-	total, err := r.products.CountDocuments(ctx, filter)
+	q := r.applyFilters(gorm.G[models.Product](r.db).Where("1 = 1"), p)
+
+	total, err := q.Count(ctx, "*")
 	if err != nil {
 		return nil, err
 	}
 
-	opts := options.Find().
-		SetSort(sortDoc(p.Sort)).
-		SetSkip(int64((page - 1) * count)).
-		SetLimit(int64(count))
-	cursor, err := r.products.Find(ctx, filter, opts)
+	products, err := q.Order(sortExpr(p.Sort)).Offset((page - 1) * count).Limit(count).Find(ctx)
 	if err != nil {
-		return nil, err
-	}
-	products := []models.Product{}
-	if err := cursor.All(ctx, &products); err != nil {
 		return nil, err
 	}
 	for i := range products {
@@ -130,61 +115,56 @@ func (r *ProductRepository) ListByCategory(ctx context.Context, categoryID strin
 // GetByID returns a single storefront product, enriched with its catalog info
 // and a handful of recent reviews, or repoerr.ErrNotFound.
 func (r *ProductRepository) GetByID(ctx context.Context, id string) (*models.Product, error) {
-	product := &models.Product{}
-	err := r.products.FindOne(ctx, bson.M{"_id": id}).Decode(product)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	product, err := gorm.G[models.Product](r.db).Where("id = ?", id).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	r.attachCatalog(ctx, product)
-	r.attachReviews(ctx, product)
-	return product, nil
+	r.attachCatalog(ctx, &product)
+	r.attachReviews(ctx, &product)
+	return &product, nil
 }
 
 // GetImages returns the product's image URLs, or repoerr.ErrNotFound.
 func (r *ProductRepository) GetImages(ctx context.Context, id string) ([]string, error) {
-	var doc struct {
-		Images []string `bson:"images"`
-	}
-	err := r.products.FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	product, err := gorm.G[models.Product](r.db).Where("id = ?", id).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return doc.Images, nil
+	if product.Images == nil {
+		return []string{}, nil
+	}
+	return product.Images, nil
 }
 
 // GetRelated returns up to `limit` products sharing a category (or, failing
 // that, a brand) with the given product, excluding it. Returns
 // repoerr.ErrNotFound if the product is missing.
 func (r *ProductRepository) GetRelated(ctx context.Context, id string, limit int) ([]models.Product, error) {
-	product := &models.Product{}
-	err := r.products.FindOne(ctx, bson.M{"_id": id}).Decode(product)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	product, err := gorm.G[models.Product](r.db).Where("id = ?", id).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	r.loadCategoryIDs(ctx, &product)
 	if limit <= 0 {
 		limit = 8
 	}
-	filter := bson.M{"_id": bson.M{"$ne": id}}
+	q := gorm.G[models.Product](r.db).Where("id <> ?", id)
 	if len(product.Category) > 0 {
-		filter["category"] = bson.M{"$in": product.Category}
+		q = q.Where("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = products.id AND pc.category_id IN ?)", product.Category)
 	} else if product.BrandID != "" {
-		filter["brand_id"] = product.BrandID
+		q = q.Where("brand_id = ?", product.BrandID)
 	}
-	cursor, err := r.products.Find(ctx, filter, options.Find().SetLimit(int64(limit)))
+	related, err := q.Limit(limit).Find(ctx)
 	if err != nil {
-		return nil, err
-	}
-	related := []models.Product{}
-	if err := cursor.All(ctx, &related); err != nil {
 		return nil, err
 	}
 	for i := range related {
@@ -193,30 +173,26 @@ func (r *ProductRepository) GetRelated(ctx context.Context, id string, limit int
 	return related, nil
 }
 
-// GetAvailability reports per-branch stock derived from the product's
-// quantity_distribution. Returns repoerr.ErrNotFound if the product is missing.
+// GetAvailability reports per-branch stock derived from the product's stock
+// rows. Returns repoerr.ErrNotFound if the product is missing.
 func (r *ProductRepository) GetAvailability(ctx context.Context, id string) ([]models.BranchAvailability, error) {
-	var doc struct {
-		QuantityDistribution []struct {
-			Quantity int `bson:"quantity"`
-			Place    struct {
-				ID string `bson:"id"`
-			} `bson:"place"`
-		} `bson:"quantity_distribution"`
-	}
-	err := r.products.FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
-	if errors.Is(err, mongo.ErrNoDocuments) {
-		return nil, repoerr.ErrNotFound
-	}
+	cnt, err := gorm.G[models.Product](r.db).Where("id = ?", id).Count(ctx, "*")
 	if err != nil {
 		return nil, err
 	}
-	availability := make([]models.BranchAvailability, 0, len(doc.QuantityDistribution))
-	for _, d := range doc.QuantityDistribution {
+	if cnt == 0 {
+		return nil, repoerr.ErrNotFound
+	}
+	stocks, err := gorm.G[models.ProductDistribution](r.db).Where("product_id = ?", id).Find(ctx)
+	if err != nil {
+		return nil, err
+	}
+	availability := make([]models.BranchAvailability, 0, len(stocks))
+	for _, s := range stocks {
 		availability = append(availability, models.BranchAvailability{
-			BranchID: d.Place.ID,
-			Quantity: d.Quantity,
-			InStock:  d.Quantity > 0,
+			BranchID: s.Place.ID,
+			Quantity: int(s.Quantity),
+			InStock:  s.Quantity > 0,
 		})
 	}
 	return availability, nil
@@ -225,60 +201,57 @@ func (r *ProductRepository) GetAvailability(ctx context.Context, id string) ([]m
 // GetReviews returns a paginated list of a product's reviews (newest first).
 func (r *ProductRepository) GetReviews(ctx context.Context, productID string, page, count int) (*models.PagedReviews, error) {
 	page, count = normalizePaging(page, count)
-	filter := bson.M{"product_id": productID}
+	q := gorm.G[models.Review](r.db).Where("product_id = ?", productID)
 
-	total, err := r.reviews.CountDocuments(ctx, filter)
+	total, err := q.Count(ctx, "*")
 	if err != nil {
 		return nil, err
 	}
-	opts := options.Find().
-		SetSort(bson.D{{Key: "created_at", Value: -1}}).
-		SetSkip(int64((page - 1) * count)).
-		SetLimit(int64(count))
-	cursor, err := r.reviews.Find(ctx, filter, opts)
+	reviews, err := q.Order("created_at DESC").Offset((page - 1) * count).Limit(count).Find(ctx)
 	if err != nil {
-		return nil, err
-	}
-	reviews := []models.Review{}
-	if err := cursor.All(ctx, &reviews); err != nil {
 		return nil, err
 	}
 	return &models.PagedReviews{Reviews: reviews, Total: total, Page: page, Count: count}, nil
 }
 
-// attachCatalog resolves the product's Category ids and BrandID into full
+// loadCategoryIDs populates product.Category from the product_categories join
+// table (best-effort; the field is not persisted directly on the product row).
+func (r *ProductRepository) loadCategoryIDs(ctx context.Context, product *models.Product) {
+	var ids []string
+	_ = r.db.WithContext(ctx).Table("product_categories").
+		Where("product_id = ?", product.ID).
+		Pluck("category_id", &ids)
+	product.Category = ids
+}
+
+// attachCatalog resolves the product's category ids and BrandID into full
 // catalog documents and attaches them to the product. Lookup failures are
 // non-fatal: enrichment is best-effort, so a missing category/brand simply
 // leaves the field empty rather than failing the whole read.
 func (r *ProductRepository) attachCatalog(ctx context.Context, product *models.Product) {
+	r.loadCategoryIDs(ctx, product)
 	if len(product.Category) > 0 {
-		cursor, err := r.categories.Find(ctx, bson.M{"_id": bson.M{"$in": product.Category}})
+		categories, err := gorm.G[models.Category](r.db).Where("id IN ?", product.Category).Find(ctx)
 		if err == nil {
-			categories := []models.Category{}
-			if cursor.All(ctx, &categories) == nil {
-				product.Categories = categories
-			}
+			product.Categories = categories
 		}
 	}
 	if product.BrandID != "" {
-		brand := &models.Brand{}
-		if r.brands.FindOne(ctx, bson.M{"_id": product.BrandID}).Decode(brand) == nil {
-			product.Brand = brand
+		brand, err := gorm.G[models.Brand](r.db).Where("id = ?", product.BrandID).First(ctx)
+		if err == nil {
+			product.Brand = &brand
 		}
 	}
 }
 
 // attachReviews attaches a handful of recent reviews to a product (best-effort).
 func (r *ProductRepository) attachReviews(ctx context.Context, product *models.Product) {
-	opts := options.Find().
-		SetSort(bson.D{{Key: "created_at", Value: -1}}).
-		SetLimit(detailReviewLimit)
-	cursor, err := r.reviews.Find(ctx, bson.M{"product_id": product.ID}, opts)
-	if err != nil {
-		return
-	}
-	reviews := []models.Review{}
-	if cursor.All(ctx, &reviews) == nil {
+	reviews, err := gorm.G[models.Review](r.db).
+		Where("product_id = ?", product.ID).
+		Order("created_at DESC").
+		Limit(detailReviewLimit).
+		Find(ctx)
+	if err == nil {
 		product.Reviews = reviews
 	}
 }

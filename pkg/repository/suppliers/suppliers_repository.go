@@ -1,7 +1,7 @@
 // Package suppliers is the repository for the admin suppliers domain. It owns
-// every mongo/bson interaction for suppliers, mirroring the store repositories:
-// the controller holds a *SuppliersRepository and its handlers call these
-// methods instead of touching collections directly.
+// every gorm/Postgres interaction for suppliers, mirroring the other ported
+// repositories: the controller holds a *SuppliersRepository and its handlers call
+// these methods instead of touching the database directly.
 package suppliers
 
 import (
@@ -10,42 +10,30 @@ import (
 	"time"
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/ledger"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/aslon1213/g4h_pos_erp/pkg/utils"
-	"github.com/aslon1213/g4h_pos_erp/platform/database"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
-// SuppliersRepository owns the suppliers, transactions and finance collections.
-// Finance is needed to resolve branches and to reflect supplier transactions on
-// the owning branch's balances.
+// SuppliersRepository owns the suppliers table. It also reads branch_finance to
+// resolve branches; supplier-transaction money math lives in the ledger package.
 type SuppliersRepository struct {
-	suppliers    *mongo.Collection
-	transactions *mongo.Collection
-	finance      *mongo.Collection
+	db *gorm.DB
 }
 
 // New builds the repository.
-func New(db *mongo.Database) *SuppliersRepository {
-	return &SuppliersRepository{
-		suppliers:    db.Collection("suppliers"),
-		transactions: db.Collection("transactions"),
-		finance:      db.Collection("finance"),
-	}
+func New(db *gorm.DB) *SuppliersRepository {
+	return &SuppliersRepository{db: db}
 }
 
-// resolveBranchID looks a branch up by id or name and returns its branch id, or
-// repoerr.ErrNotFound when no branch matches.
+// resolveBranchID looks a branch up by id or name in branch_finance and returns
+// its branch id, or repoerr.ErrNotFound when no branch matches.
 func (r *SuppliersRepository) resolveBranchID(ctx context.Context, branchOrName string) (string, error) {
-	branch := models.BranchFinance{}
-	err := r.finance.FindOne(ctx, bson.M{"$or": []bson.M{
-		{"branch_id": branchOrName},
-		{"branch_name": branchOrName},
-	}}).Decode(&branch)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	branch, err := gorm.G[models.BranchFinance](r.db).
+		Where("branch_id = ? OR branch_name = ?", branchOrName, branchOrName).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", repoerr.ErrNotFound
 	}
 	if err != nil {
@@ -57,60 +45,52 @@ func (r *SuppliersRepository) resolveBranchID(ctx context.Context, branchOrName 
 // Find returns suppliers matching the query. A branch filter (id or name) is
 // resolved to a branch id first; an unknown branch yields repoerr.ErrNotFound.
 func (r *SuppliersRepository) Find(ctx context.Context, q models.SupplierQueryParams) ([]models.Supplier, error) {
-	filter := bson.M{}
+	// Seed the chain with an always-true predicate so `query` is a ChainInterface
+	// from the start and the optional filters below can be reassigned onto it.
+	query := gorm.G[models.Supplier](r.db).Where("1 = 1")
 	if q.Name != "" {
-		filter["name"] = q.Name
+		query = query.Where("name = ?", q.Name)
 	}
 	if q.INN != "" {
-		filter["inn"] = q.INN
+		query = query.Where("inn = ?", q.INN)
 	}
 	if q.Branch != "" {
 		branchID, err := r.resolveBranchID(ctx, q.Branch)
 		if err != nil {
 			return nil, err
 		}
-		filter["branch"] = branchID
+		query = query.Where("branch_id = ?", branchID)
 	}
 	if q.Email != "" {
-		filter["email"] = q.Email
+		query = query.Where("email = ?", q.Email)
 	}
 	if q.Phone != "" {
-		filter["phone"] = q.Phone
+		query = query.Where("phone = ?", q.Phone)
 	}
 	if q.Address != "" {
-		filter["address"] = q.Address
+		query = query.Where("address = ?", q.Address)
 	}
 	if q.Notes != "" {
-		filter["notes"] = q.Notes
+		query = query.Where("notes = ?", q.Notes)
 	}
-
-	cursor, err := r.suppliers.Find(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	suppliers := []models.Supplier{}
-	if err := cursor.All(ctx, &suppliers); err != nil {
-		return nil, err
-	}
-	return suppliers, nil
+	return query.Find(ctx)
 }
 
 // GetByID returns a single supplier, or repoerr.ErrNotFound.
 func (r *SuppliersRepository) GetByID(ctx context.Context, id string) (*models.Supplier, error) {
-	supplier := &models.Supplier{}
-	err := r.suppliers.FindOne(ctx, bson.M{"_id": id}).Decode(supplier)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	supplier, err := gorm.G[models.Supplier](r.db).Where("id = ?", id).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return supplier, nil
+	return &supplier, nil
 }
 
 // Create inserts a new supplier (with zeroed financial data) under the branch
-// named/identified by base.Branch, and registers it on that branch's finance
-// document. Returns repoerr.ErrNotFound if the branch does not exist.
+// named/identified by base.Branch. Returns repoerr.ErrNotFound if the branch does
+// not exist. (Under Postgres there is no finance.suppliers[] array to maintain.)
 func (r *SuppliersRepository) Create(ctx context.Context, base models.SupplierBase) (*models.Supplier, error) {
 	branchID, err := r.resolveBranchID(ctx, base.Branch)
 	if err != nil {
@@ -132,15 +112,7 @@ func (r *SuppliersRepository) Create(ctx context.Context, base models.SupplierBa
 		UpdatedAt: now,
 	}
 
-	if _, err := r.suppliers.InsertOne(ctx, supplier); err != nil {
-		return nil, err
-	}
-
-	// register the supplier on the branch's finance document
-	if _, err := r.finance.UpdateOne(ctx,
-		bson.M{"branch_id": branchID},
-		bson.M{"$push": bson.M{"suppliers": supplier.ID}},
-	); err != nil {
+	if err := gorm.G[models.Supplier](r.db).Create(ctx, &supplier); err != nil {
 		return nil, err
 	}
 	return &supplier, nil
@@ -149,7 +121,7 @@ func (r *SuppliersRepository) Create(ctx context.Context, base models.SupplierBa
 // Update patches the editable fields of a supplier. Returns repoerr.ErrNotFound
 // when no supplier matches the id.
 func (r *SuppliersRepository) Update(ctx context.Context, id string, base models.SupplierBase) error {
-	set := bson.M{"updated_at": time.Now().In(utils.GetTimeZone())}
+	set := map[string]interface{}{"updated_at": time.Now().In(utils.GetTimeZone())}
 	if base.Email != "" {
 		set["email"] = base.Email
 	}
@@ -169,11 +141,11 @@ func (r *SuppliersRepository) Update(ctx context.Context, id string, base models
 		set["notes"] = base.Notes
 	}
 
-	res, err := r.suppliers.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": set})
-	if err != nil {
-		return err
+	res := r.db.WithContext(ctx).Table("suppliers").Where("id = ?", id).Updates(set)
+	if res.Error != nil {
+		return res.Error
 	}
-	if res.MatchedCount == 0 {
+	if res.RowsAffected == 0 {
 		return repoerr.ErrNotFound
 	}
 	return nil
@@ -181,114 +153,32 @@ func (r *SuppliersRepository) Update(ctx context.Context, id string, base models
 
 // Delete removes a supplier. Returns repoerr.ErrNotFound when it does not exist.
 func (r *SuppliersRepository) Delete(ctx context.Context, id string) error {
-	res, err := r.suppliers.DeleteOne(ctx, bson.M{"_id": id})
+	affected, err := gorm.G[models.Supplier](r.db).Where("id = ?", id).Delete(ctx)
 	if err != nil {
 		return err
 	}
-	if res.DeletedCount == 0 {
+	if affected == 0 {
 		return repoerr.ErrNotFound
 	}
 	return nil
 }
 
 // CreateTransaction records a supplier transaction and reflects it on both the
-// supplier's financial data and the branch's finance balances, atomically in a
-// MongoDB multi-document transaction (requires a replica set). Returns
-// repoerr.ErrNotFound if the supplier does not exist.
-func (r *SuppliersRepository) CreateTransaction(ctx context.Context, branchID, supplierID string, base models.TransactionBase) (*models.Transaction, error) {
-	sess, sessCtx, err := database.StartTransaction(r.suppliers.Database().Client())
-	if err != nil {
-		return nil, err
-	}
-	defer sess.EndSession(sessCtx)
-
-	transaction, err := NewSupplierTransaction(sessCtx, base, supplierID, branchID, r.transactions, r.finance, r.suppliers)
-	if err != nil {
-		_ = sess.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	if err := sess.CommitTransaction(sessCtx); err != nil {
-		return nil, err
-	}
-	return transaction, nil
-}
-
-// NewSupplierTransaction performs the three writes (transaction insert, supplier
-// financial-data update, branch finance update) within the caller's context.
-// It is exported as a free function (taking collections explicitly) so other
-// domains — journals operations, product income — can apply a supplier
-// transaction inside their own multi-document session. Money semantics:
-//   - credit (we paid the supplier): supplier balance +amount, branch debt -amount
-//     and the matching branch balance bucket is reduced.
-//   - debit (supplier delivered value): supplier balance -amount, branch debt +amount.
-//
+// supplier's balances and the branch's finance balances, atomically in a single
+// gorm transaction. The money math lives in ledger.ApplySupplierTransaction.
 // Returns repoerr.ErrNotFound if the supplier does not exist.
-func NewSupplierTransaction(ctx context.Context, base models.TransactionBase, supplierID, branchID string, transactions, finance, suppliers *mongo.Collection) (*models.Transaction, error) {
-	transaction := models.NewTransaction(&base, models.InitiatorTypeSupplier, branchID)
-
-	if _, err := transactions.InsertOne(ctx, transaction); err != nil {
-		return nil, err
-	}
-
-	isCredit := transaction.TransactionBase.Type == models.TransactionTypeCredit
-	signedAmount := func(when bool) int32 {
-		if when {
-			return int32(transaction.Amount)
+func (r *SuppliersRepository) CreateTransaction(ctx context.Context, branchID, supplierID string, base models.TransactionBase) (*models.Transaction, error) {
+	var transaction *models.Transaction
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		t, err := ledger.ApplySupplierTransaction(ctx, tx, base, supplierID, branchID)
+		if err != nil {
+			return err
 		}
-		return 0
-	}
-
-	supplierUpdate := bson.M{
-		"$push": bson.M{"financial_data.transactions": transaction},
-		"$inc": bson.M{
-			"financial_data.balance": func() int32 {
-				if isCredit {
-					return int32(transaction.Amount)
-				}
-				return -int32(transaction.Amount)
-			}(),
-			"financial_data.total_income":   signedAmount(isCredit),
-			"financial_data.total_expenses": signedAmount(!isCredit),
-		},
-	}
-	supRes, err := suppliers.UpdateOne(ctx, bson.M{"_id": supplierID}, supplierUpdate)
+		transaction = t
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if supRes.MatchedCount == 0 {
-		return nil, repoerr.ErrNotFound
-	}
-
-	// branch finance: debt and the matching balance bucket
-	inc := bson.M{
-		"finance.debt": func() int32 {
-			switch transaction.TransactionBase.Type {
-			case models.TransactionTypeDebit:
-				return int32(transaction.Amount)
-			case models.TransactionTypeCredit:
-				return -int32(transaction.Amount)
-			}
-			return 0
-		}(),
-	}
-	creditOutflow := func() int32 {
-		if isCredit {
-			return -int32(transaction.Amount)
-		}
-		return 0
-	}()
-	switch transaction.TransactionBase.PaymentMethod {
-	case models.PaymentMethodCash:
-		inc["finance.balance.cash"] = creditOutflow
-	case models.PaymentMethodBank, models.OnlineMobileAppPayment:
-		inc["finance.balance.bank"] = creditOutflow
-	case models.OnlineTransfer:
-		inc["finance.balance.mobile_apps"] = creditOutflow
-	}
-
-	if _, err := finance.UpdateOne(ctx, bson.M{"branch_id": branchID}, bson.M{"$inc": inc}); err != nil {
-		return nil, err
-	}
-	log.Info().Str("supplier_id", supplierID).Str("branch_id", branchID).Msg("Supplier transaction applied")
 	return transaction, nil
 }

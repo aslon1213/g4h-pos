@@ -4,32 +4,31 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 	journalsrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/journals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // OperationHandlers exposes the admin journal-operation endpoints. All database
 // access goes through Repo; the controller only parses requests, logs audit
 // activity, runs request-level validation, and renders the response envelope.
 type OperationHandlers struct {
-	ctx                  context.Context
-	Repo                 *journalsrepo.JournalsRepository
-	ActivitiesCollection *mongo.Collection
+	ctx            context.Context
+	Repo           *journalsrepo.JournalsRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
 }
 
-func NewOperationsHandler(db *mongo.Database) *OperationHandlers {
+func NewOperationsHandler(db *gorm.DB) *OperationHandlers {
 	ctx := context.Background()
-	activitiesCollection := db.Collection("activities")
 	return &OperationHandlers{
-		ctx:                  ctx,
-		Repo:                 journalsrepo.New(db),
-		ActivitiesCollection: activitiesCollection,
+		ctx:            ctx,
+		Repo:           journalsrepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
 	}
 }
 
@@ -67,7 +66,7 @@ func (o *OperationHandlers) NewOperationTransaction(c *fiber.Ctx) error {
 		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateTransaction, transaction, o.ActivitiesCollection)
+	o.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateTransaction, transaction)
 
 	log.Info().Msg("Transaction created successfully")
 	return c.Status(fiber.StatusCreated).JSON(models.NewOutput(journal))
@@ -124,13 +123,13 @@ func (o *OperationHandlers) UpdateOperationTransactionByID(c *fiber.Ctx) error {
 	}
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeEditOperation, fiber.Map{
+	o.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeEditOperation, fiber.Map{
 		"journal_id":   journal.ID,
 		"operation_id": operation_id,
 		"amount":       amount,
 		"description":  description,
 		"activity":     "updated",
-	}, o.ActivitiesCollection)
+	})
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(journal))
 }
 
@@ -165,11 +164,11 @@ func (o *OperationHandlers) DeleteOperationTransactionByID(c *fiber.Ctx) error {
 	}
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeDeleteOperation, fiber.Map{
+	o.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeDeleteOperation, fiber.Map{
 		"journal_id":   journal.ID,
 		"operation_id": operation_id,
 		"activity":     "deleted",
-	}, o.ActivitiesCollection)
+	})
 
 	log.Info().Msg("Transaction deleted successfully")
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(journal))

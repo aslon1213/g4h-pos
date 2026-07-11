@@ -1,6 +1,7 @@
 // Package cart is the repository for the authenticated customer's shopping cart
-// (the `carts` collection, one document per customer). It reads the products
-// collection to snapshot item name/price when lines are added.
+// (the `carts` table plus its `cart_items` child table, one cart per customer).
+// It reads the products/product_stock tables to snapshot item name/price when
+// lines are added.
 package cart
 
 import (
@@ -11,60 +12,63 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-// CartRepository owns the carts collection and reads products for line snapshots.
+// CartRepository owns the carts/cart_items tables and reads products for line
+// snapshots.
 type CartRepository struct {
-	carts    *mongo.Collection
-	products *mongo.Collection
+	db *gorm.DB
 }
 
-// New builds the repository and ensures the unique customer index exists.
-func New(db *mongo.Database) *CartRepository {
-	carts := db.Collection("carts")
-	_, _ = carts.Indexes().CreateOne(context.Background(), mongo.IndexModel{
-		Keys:    bson.D{{Key: "customer_id", Value: 1}},
-		Options: options.Index().SetUnique(true),
-	})
-	return &CartRepository{carts: carts, products: db.Collection("products")}
+// New builds the repository.
+func New(db *gorm.DB) *CartRepository {
+	return &CartRepository{db: db}
 }
 
 // GetByCustomer returns the customer's cart, creating an empty one on first use.
 func (r *CartRepository) GetByCustomer(ctx context.Context, customerID string) (*models.Cart, error) {
-	cart := &models.Cart{}
-	err := r.carts.FindOne(ctx, bson.M{"customer_id": customerID}).Decode(cart)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	cart, err := gorm.G[models.Cart](r.db).Where("customer_id = ?", customerID).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return r.ensure(ctx, customerID)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return cart, nil
+	r.attachItems(ctx, &cart)
+	return &cart, nil
 }
 
-// ensure upserts an empty cart for the customer and returns it.
+// ensure find-or-creates an empty cart for the customer and returns it.
 func (r *CartRepository) ensure(ctx context.Context, customerID string) (*models.Cart, error) {
 	now := time.Now()
 	cart := &models.Cart{
 		ID:         uuid.New().String(),
 		CustomerID: customerID,
-		Items:      []models.CartItem{},
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	opts := options.UpdateOne().SetUpsert(true)
-	_, err := r.carts.UpdateOne(ctx,
-		bson.M{"customer_id": customerID},
-		bson.M{"$setOnInsert": cart},
-		opts,
-	)
+	// One cart per customer: on a concurrent insert the unique index fires and
+	// we simply re-read the existing row.
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "customer_id"}}, DoNothing: true}).
+		Create(cart).Error
 	if err != nil {
 		return nil, err
 	}
 	return r.GetByCustomer(ctx, customerID)
+}
+
+// attachItems loads the cart's line items (best-effort).
+func (r *CartRepository) attachItems(ctx context.Context, cart *models.Cart) {
+	items, err := gorm.G[models.CartItem](r.db).Where("cart_id = ?", cart.ID).Order("id").Find(ctx)
+	if err == nil {
+		cart.Items = items
+	}
+	if cart.Items == nil {
+		cart.Items = []models.CartItem{}
+	}
 }
 
 // AddItem adds (or increments, if already present) a product line, snapshotting
@@ -176,19 +180,39 @@ func (r *CartRepository) RemovePromo(ctx context.Context, customerID string) (*m
 	return r.SetPromo(ctx, customerID, "")
 }
 
-// save persists the cart's items/totals and returns the stored document.
+// save persists the cart's totals and replaces its line items (the whole item
+// set is rewritten, mirroring the old "$set items" semantics), then returns the
+// stored cart.
 func (r *CartRepository) save(ctx context.Context, cart *models.Cart) (*models.Cart, error) {
-	_, err := r.carts.UpdateOne(ctx,
-		bson.M{"customer_id": cart.CustomerID},
-		bson.M{"$set": bson.M{
-			"items":       cart.Items,
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.WithContext(ctx).Model(&models.Cart{}).Where("id = ?", cart.ID).Updates(map[string]interface{}{
 			"coupon_code": cart.CouponCode,
 			"subtotal":    cart.Subtotal,
 			"discount":    cart.Discount,
 			"total":       cart.Total,
 			"updated_at":  time.Now(),
-		}},
-	)
+		})
+		if res.Error != nil {
+			return res.Error
+		}
+		if _, err := gorm.G[models.CartItem](tx).Where("cart_id = ?", cart.ID).Delete(ctx); err != nil {
+			return err
+		}
+		if len(cart.Items) > 0 {
+			items := make([]models.CartItem, len(cart.Items))
+			copy(items, cart.Items)
+			for i := range items {
+				items[i].CartID = cart.ID
+				if items[i].ID == "" {
+					items[i].ID = uuid.New().String()
+				}
+			}
+			if err := gorm.G[models.CartItem](tx).CreateInBatches(ctx, &items, len(items)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -209,26 +233,34 @@ func (r *CartRepository) recompute(cart *models.Cart) {
 // productSnapshot reads a product and returns a cart line pre-filled with its
 // display fields and a representative price.
 func (r *CartRepository) productSnapshot(ctx context.Context, productID string) (*models.CartItem, error) {
-	var doc struct {
-		Name                 string   `bson:"name"`
-		Images               []string `bson:"images"`
-		QuantityDistribution []struct {
-			Price int32 `bson:"price"`
-		} `bson:"quantity_distribution"`
-	}
-	err := r.products.FindOne(ctx, bson.M{"_id": productID}).Decode(&doc)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	product, err := gorm.G[models.Product](r.db).Where("id = ?", productID).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	item := &models.CartItem{ProductID: productID, Name: doc.Name}
-	if len(doc.Images) > 0 {
-		item.Image = doc.Images[0]
+	item := &models.CartItem{ProductID: productID, Name: product.Name}
+	if len(product.Images) > 0 {
+		item.Image = product.Images[0]
 	}
-	if len(doc.QuantityDistribution) > 0 {
-		item.UnitPrice = float64(doc.QuantityDistribution[0].Price)
+	price, err := r.firstStockPrice(ctx, productID)
+	if err != nil {
+		return nil, err
 	}
+	item.UnitPrice = price
 	return item, nil
+}
+
+// firstStockPrice returns the price of the product's first stock row (mirrors
+// the old quantity_distribution[0].price), or 0 when the product has no stock.
+func (r *CartRepository) firstStockPrice(ctx context.Context, productID string) (float64, error) {
+	stock, err := gorm.G[models.ProductDistribution](r.db).Where("product_id = ?", productID).Order("id").First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return float64(stock.Price), nil
 }

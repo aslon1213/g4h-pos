@@ -5,7 +5,7 @@ import (
 	catalogrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/catalog"
 	productrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/product"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles the public catalog browse surface (categories, brands,
@@ -16,7 +16,7 @@ type Controller struct {
 	Products *productrepo.ProductRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Catalog:  catalogrepo.New(db),
 		Products: productrepo.New(db),

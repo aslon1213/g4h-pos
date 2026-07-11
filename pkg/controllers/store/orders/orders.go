@@ -5,7 +5,7 @@ import (
 	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	orderrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/order"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles checkout and the customer's orders. Orders are persisted
@@ -15,7 +15,7 @@ type Controller struct {
 	Cart   *cartrepo.CartRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Orders: orderrepo.New(db),
 		Cart:   cartrepo.New(db),

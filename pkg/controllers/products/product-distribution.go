@@ -1,8 +1,8 @@
 package products
 
 import (
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
@@ -70,10 +70,10 @@ func (p *ProductsController) NewIncome(c *fiber.Ctx) error {
 	}
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeProductIncome, fiber.Map{
+	p.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeProductIncome, fiber.Map{
 		"product_id": product_id,
 		"input":      input,
-	}, p.ActivitiesCollection)
+	})
 
 	log.Info().Str("product_id", product_id).Msg("Successfully processed new income")
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(
@@ -93,8 +93,7 @@ func (p *ProductsController) NewIncome(c *fiber.Ctx) error {
 func (p *ProductsController) NewTransfer(c *fiber.Ctx) error {
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeProductTransfer, fiber.Map{}, p.ActivitiesCollection)
+	p.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeProductTransfer, fiber.Map{})
 
-	panic("Not implemented")
-	return nil
+	return models.NotImplemented(c)
 }

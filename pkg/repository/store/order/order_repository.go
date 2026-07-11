@@ -1,5 +1,6 @@
-// Package order is the repository for storefront orders (the `orders`
-// collection). It owns order persistence and status transitions.
+// Package order is the repository for storefront orders (the `orders` table plus
+// its `order_items` child table). It owns order persistence and status
+// transitions.
 package order
 
 import (
@@ -11,27 +12,29 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
-// OrderRepository owns the orders collection.
+// OrderRepository owns the orders/order_items tables.
 type OrderRepository struct {
-	coll *mongo.Collection
+	db *gorm.DB
 }
 
-// New builds the repository and ensures lookup indexes exist.
-func New(db *mongo.Database) *OrderRepository {
-	coll := db.Collection("orders")
-	_, _ = coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
-		{Keys: bson.D{{Key: "customer_id", Value: 1}, {Key: "created_at", Value: -1}}},
-		{Keys: bson.D{{Key: "number", Value: 1}}, Options: options.Index().SetUnique(true)},
-	})
-	return &OrderRepository{coll: coll}
+// New builds the repository.
+func New(db *gorm.DB) *OrderRepository {
+	return &OrderRepository{db: db}
 }
 
-// Create persists a new order, assigning its id, number, status and timestamps.
+// isUniqueViolation reports whether err is a Postgres unique-constraint (23505)
+// violation.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// Create persists a new order (row + line items atomically), assigning its id,
+// number, status and timestamps.
 func (r *OrderRepository) Create(ctx context.Context, order *models.Order) (*models.Order, error) {
 	now := time.Now()
 	order.ID = uuid.New().String()
@@ -44,7 +47,29 @@ func (r *OrderRepository) Create(ctx context.Context, order *models.Order) (*mod
 	if order.Items == nil {
 		order.Items = []models.OrderItem{}
 	}
-	if _, err := r.coll.InsertOne(ctx, order); err != nil {
+
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := gorm.G[models.Order](tx).Create(ctx, order); err != nil {
+			if isUniqueViolation(err) {
+				return repoerr.ErrConflict
+			}
+			return err
+		}
+		if len(order.Items) > 0 {
+			items := make([]models.OrderItem, len(order.Items))
+			copy(items, order.Items)
+			for i := range items {
+				items[i].ID = 0 // let the DB assign the bigserial id
+				items[i].OrderID = order.ID
+			}
+			if err := gorm.G[models.OrderItem](tx).CreateInBatches(ctx, &items, len(items)); err != nil {
+				return err
+			}
+			copy(order.Items, items)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return order, nil
@@ -58,55 +83,57 @@ func (r *OrderRepository) ListByCustomer(ctx context.Context, customerID string,
 	if count < 1 {
 		count = 20
 	}
-	filter := bson.M{"customer_id": customerID}
-	total, err := r.coll.CountDocuments(ctx, filter)
+	q := gorm.G[models.Order](r.db).Where("customer_id = ?", customerID)
+	total, err := q.Count(ctx, "*")
 	if err != nil {
 		return nil, 0, err
 	}
-	opts := options.Find().
-		SetSort(bson.D{{Key: "created_at", Value: -1}}).
-		SetSkip(int64((page - 1) * count)).
-		SetLimit(int64(count))
-	cursor, err := r.coll.Find(ctx, filter, opts)
+	orders, err := q.Order("created_at DESC").Offset((page - 1) * count).Limit(count).Find(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	orders := []models.Order{}
-	if err := cursor.All(ctx, &orders); err != nil {
-		return nil, 0, err
+	for i := range orders {
+		r.attachItems(ctx, &orders[i])
 	}
 	return orders, total, nil
 }
 
 // GetByID returns one order owned by the customer, or repoerr.ErrNotFound.
 func (r *OrderRepository) GetByID(ctx context.Context, customerID, orderID string) (*models.Order, error) {
-	order := &models.Order{}
-	err := r.coll.FindOne(ctx, bson.M{"_id": orderID, "customer_id": customerID}).Decode(order)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	order, err := gorm.G[models.Order](r.db).Where("id = ? AND customer_id = ?", orderID, customerID).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return order, nil
+	r.attachItems(ctx, &order)
+	return &order, nil
+}
+
+// attachItems loads an order's line items (best-effort).
+func (r *OrderRepository) attachItems(ctx context.Context, order *models.Order) {
+	items, err := gorm.G[models.OrderItem](r.db).Where("order_id = ?", order.ID).Order("id").Find(ctx)
+	if err == nil {
+		order.Items = items
+	}
+	if order.Items == nil {
+		order.Items = []models.OrderItem{}
+	}
 }
 
 // UpdateStatus transitions an order to a new status.
 func (r *OrderRepository) UpdateStatus(ctx context.Context, customerID, orderID string, status models.OrderStatus) (*models.Order, error) {
-	order := &models.Order{}
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	err := r.coll.FindOneAndUpdate(ctx,
-		bson.M{"_id": orderID, "customer_id": customerID},
-		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}},
-		opts,
-	).Decode(order)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	res := r.db.WithContext(ctx).Model(&models.Order{}).
+		Where("id = ? AND customer_id = ?", orderID, customerID).
+		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
 		return nil, repoerr.ErrNotFound
 	}
-	if err != nil {
-		return nil, err
-	}
-	return order, nil
+	return r.GetByID(ctx, customerID, orderID)
 }
 
 // Cancel marks a pending/confirmed order cancelled. Returns repoerr.ErrInvalidInput

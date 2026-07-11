@@ -1,6 +1,8 @@
-// Package review is the repository for product reviews (the `reviews`
-// collection). It backs both the customer write surface and the public review
-// listing on the products controller.
+// Package review is the repository for product reviews (the `reviews` table plus
+// the `review_votes` helpful-vote dedupe table). It backs both the customer
+// write surface and the public review listing on the products controller, and
+// keeps the product's denormalized review aggregates (rating, review_count) in
+// sync.
 package review
 
 import (
@@ -11,64 +13,45 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
-// ReviewRepository owns the reviews collection and keeps the product document's
-// denormalized review aggregates (rating, review_count) in sync via products.
+// ReviewRepository owns the reviews/review_votes tables and maintains the
+// products table's denormalized rating + review_count.
 type ReviewRepository struct {
-	coll     *mongo.Collection
-	products *mongo.Collection
+	db *gorm.DB
 }
 
-// New builds the repository and ensures one-review-per-customer-per-product.
-func New(db *mongo.Database) *ReviewRepository {
-	coll := db.Collection("reviews")
-	_, _ = coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: "product_id", Value: 1}, {Key: "customer_id", Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
-		{Keys: bson.D{{Key: "product_id", Value: 1}, {Key: "created_at", Value: -1}}},
-	})
-	return &ReviewRepository{coll: coll, products: db.Collection("products")}
+// New builds the repository.
+func New(db *gorm.DB) *ReviewRepository {
+	return &ReviewRepository{db: db}
+}
+
+// isUniqueViolation reports whether err is a Postgres unique-constraint (23505)
+// violation.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // recalcProduct recomputes a product's denormalized rating + review_count from
-// the reviews collection and writes them onto the product document. Best-effort:
-// an aggregation/update error is returned for the caller to log but should not
-// fail the review mutation itself.
+// the reviews table and writes them onto the product row. Best-effort: an error
+// is returned for the caller to log but should not fail the review mutation.
 func (r *ReviewRepository) recalcProduct(ctx context.Context, productID string) error {
-	pipeline := mongo.Pipeline{
-		bson.D{{Key: "$match", Value: bson.D{{Key: "product_id", Value: productID}}}},
-		bson.D{{Key: "$group", Value: bson.D{
-			{Key: "_id", Value: nil},
-			{Key: "avg", Value: bson.D{{Key: "$avg", Value: "$rating"}}},
-			{Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}},
-		}}},
+	var agg struct {
+		Avg float64
+		Cnt int64
 	}
-	cursor, err := r.coll.Aggregate(ctx, pipeline)
+	err := r.db.WithContext(ctx).Model(&models.Review{}).
+		Select("COALESCE(AVG(rating), 0) AS avg, COUNT(*) AS cnt").
+		Where("product_id = ?", productID).
+		Scan(&agg).Error
 	if err != nil {
 		return err
 	}
-	var rows []struct {
-		Avg   float64 `bson:"avg"`
-		Count int     `bson:"count"`
-	}
-	if err := cursor.All(ctx, &rows); err != nil {
-		return err
-	}
-	rating, count := 0.0, 0
-	if len(rows) > 0 {
-		rating, count = rows[0].Avg, rows[0].Count
-	}
-	_, err = r.products.UpdateOne(ctx,
-		bson.M{"_id": productID},
-		bson.M{"$set": bson.M{"rating": rating, "review_count": count}},
-	)
-	return err
+	return r.db.WithContext(ctx).Model(&models.Product{}).Where("id = ?", productID).
+		Updates(map[string]interface{}{"rating": agg.Avg, "review_count": agg.Cnt}).Error
 }
 
 // Create inserts a new review. Returns repoerr.ErrConflict if this customer has
@@ -80,8 +63,8 @@ func (r *ReviewRepository) Create(ctx context.Context, review *models.Review) (*
 	review.Voters = []string{}
 	review.CreatedAt = now
 	review.UpdatedAt = now
-	if _, err := r.coll.InsertOne(ctx, review); err != nil {
-		if mongo.IsDuplicateKeyError(err) {
+	if err := gorm.G[models.Review](r.db).Create(ctx, review); err != nil {
+		if isUniqueViolation(err) {
 			return nil, repoerr.ErrConflict
 		}
 		return nil, err
@@ -92,37 +75,39 @@ func (r *ReviewRepository) Create(ctx context.Context, review *models.Review) (*
 
 // Update edits the caller's own review (rating/title/body).
 func (r *ReviewRepository) Update(ctx context.Context, customerID, reviewID string, in models.UpdateReviewInput) (*models.Review, error) {
-	review := &models.Review{}
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	err := r.coll.FindOneAndUpdate(ctx,
-		bson.M{"_id": reviewID, "customer_id": customerID},
-		bson.M{"$set": bson.M{
+	res := r.db.WithContext(ctx).Model(&models.Review{}).
+		Where("id = ? AND customer_id = ?", reviewID, customerID).
+		Updates(map[string]interface{}{
 			"rating":     in.Rating,
 			"title":      in.Title,
 			"body":       in.Body,
 			"updated_at": time.Now(),
-		}},
-		opts,
-	).Decode(review)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+		})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
 		return nil, repoerr.ErrNotFound
 	}
+	review, err := gorm.G[models.Review](r.db).Where("id = ?", reviewID).First(ctx)
 	if err != nil {
 		return nil, err
 	}
 	_ = r.recalcProduct(ctx, review.ProductID)
-	return review, nil
+	return &review, nil
 }
 
 // Delete removes the caller's own review.
 func (r *ReviewRepository) Delete(ctx context.Context, customerID, reviewID string) error {
 	// Read the review first so we know which product to recompute after deletion.
-	deleted := &models.Review{}
-	err := r.coll.FindOneAndDelete(ctx, bson.M{"_id": reviewID, "customer_id": customerID}).Decode(deleted)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	deleted, err := gorm.G[models.Review](r.db).Where("id = ? AND customer_id = ?", reviewID, customerID).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return repoerr.ErrNotFound
 	}
 	if err != nil {
+		return err
+	}
+	if _, err := gorm.G[models.Review](r.db).Where("id = ? AND customer_id = ?", reviewID, customerID).Delete(ctx); err != nil {
 		return err
 	}
 	_ = r.recalcProduct(ctx, deleted.ProductID)
@@ -130,31 +115,47 @@ func (r *ReviewRepository) Delete(ctx context.Context, customerID, reviewID stri
 }
 
 // Vote records a helpful vote from a customer (idempotent per customer). The
-// helpful_votes counter only changes the first time a customer votes.
+// helpful_votes counter only changes the first time a customer votes; a repeat
+// vote (or a missing review) yields repoerr.ErrNotFound, mirroring the original.
 func (r *ReviewRepository) Vote(ctx context.Context, customerID, reviewID string, helpful bool) (*models.Review, error) {
 	delta := 1
 	if !helpful {
 		delta = -1
 	}
-	review := &models.Review{}
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	err := r.coll.FindOneAndUpdate(ctx,
-		bson.M{"_id": reviewID, "voters": bson.M{"$ne": customerID}},
-		bson.M{
-			"$inc":      bson.M{"helpful_votes": delta},
-			"$addToSet": bson.M{"voters": customerID},
-			"$set":      bson.M{"updated_at": time.Now()},
-		},
-		opts,
-	).Decode(review)
-	if errors.Is(err, mongo.ErrNoDocuments) {
-		// Either the review is missing or the customer already voted.
-		return nil, repoerr.ErrNotFound
+
+	// The review must exist first.
+	if _, err := gorm.G[models.Review](r.db).Where("id = ?", reviewID).First(ctx); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repoerr.ErrNotFound
+		}
+		return nil, err
 	}
+
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		vote := models.ReviewVote{ReviewID: reviewID, CustomerID: customerID}
+		if err := gorm.G[models.ReviewVote](tx).Create(ctx, &vote); err != nil {
+			if isUniqueViolation(err) {
+				// The customer already voted — treat as not-found, as the Mongo
+				// FindOneAndUpdate filter did.
+				return repoerr.ErrNotFound
+			}
+			return err
+		}
+		res := tx.WithContext(ctx).Model(&models.Review{}).Where("id = ?", reviewID).Updates(map[string]interface{}{
+			"helpful_votes": gorm.Expr("helpful_votes + ?", delta),
+			"updated_at":    time.Now(),
+		})
+		return res.Error
+	})
 	if err != nil {
 		return nil, err
 	}
-	return review, nil
+
+	review, err := gorm.G[models.Review](r.db).Where("id = ?", reviewID).First(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &review, nil
 }
 
 // ListByProduct returns a product's reviews, newest first, paginated.
@@ -165,21 +166,13 @@ func (r *ReviewRepository) ListByProduct(ctx context.Context, productID string, 
 	if count < 1 {
 		count = 20
 	}
-	filter := bson.M{"product_id": productID}
-	total, err := r.coll.CountDocuments(ctx, filter)
+	q := gorm.G[models.Review](r.db).Where("product_id = ?", productID)
+	total, err := q.Count(ctx, "*")
 	if err != nil {
 		return nil, err
 	}
-	opts := options.Find().
-		SetSort(bson.D{{Key: "created_at", Value: -1}}).
-		SetSkip(int64((page - 1) * count)).
-		SetLimit(int64(count))
-	cursor, err := r.coll.Find(ctx, filter, opts)
+	reviews, err := q.Order("created_at DESC").Offset((page - 1) * count).Limit(count).Find(ctx)
 	if err != nil {
-		return nil, err
-	}
-	reviews := []models.Review{}
-	if err := cursor.All(ctx, &reviews); err != nil {
 		return nil, err
 	}
 	return &models.PagedReviews{Reviews: reviews, Total: total, Page: page, Count: count}, nil

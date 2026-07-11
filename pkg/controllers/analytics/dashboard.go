@@ -4,41 +4,72 @@ import (
 	"context"
 	"time"
 
-	journal_handlers "github.com/aslon1213/g4h_pos_erp/pkg/controllers/journals"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"gorm.io/gorm"
 )
 
 var branches []models.BranchFinance
 
 type DashboardHandler struct {
-	journals *mongo.Collection
-	tracer   trace.Tracer
+	db     *gorm.DB
+	tracer trace.Tracer
 }
 
-func New(db *mongo.Database) *DashboardHandler {
+func New(db *gorm.DB) *DashboardHandler {
 	tracer := otel.Tracer("DashboardHandler")
 	ctx := context.Background()
-	cursor, err := db.Collection("finance").Find(ctx, bson.M{})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get branches")
-	}
 
-	err = cursor.All(ctx, &branches)
+	loaded, err := gorm.G[models.BranchFinance](db).Find(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get branches")
 	}
+	branches = loaded
 
 	log.Info().Msgf("Fetched %d branches", len(branches))
 	return &DashboardHandler{
-		journals: db.Collection("journals"),
-		tracer:   tracer,
+		db:     db,
+		tracer: tracer,
 	}
+}
+
+// queryJournals replaces the former journal_handlers.QueryJournals mongo helper.
+// It queries the journals table directly (branch + total filters, newest first,
+// paged) and then attaches each journal's transactions as its Operations — the
+// mongo pipeline did the same with a $lookup from the transactions collection.
+// The match/sort/skip/limit shape is preserved byte-for-byte so the charts.go
+// renderers receive the same data as before.
+func (d *DashboardHandler) queryJournals(ctx context.Context, params models.JournalQueryParams) ([]models.Journal, error) {
+	query := gorm.G[models.Journal](d.db).Order("date DESC")
+	if params.BranchID != "" {
+		query = query.Where("branch_id = ?", params.BranchID)
+	}
+	if params.Total.Use {
+		query = query.Where("total >= ? AND total <= ?", params.Total.Min, params.Total.Max)
+	}
+	if params.Page > 1 && params.PageSize > 0 {
+		query = query.Offset((params.Page - 1) * params.PageSize)
+	}
+	if params.PageSize > 0 {
+		query = query.Limit(params.PageSize)
+	}
+
+	journals, err := query.Find(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range journals {
+		ops, err := gorm.G[models.Transaction](d.db).Where("journal_id = ?", journals[i].ID).Find(ctx)
+		if err != nil {
+			return nil, err
+		}
+		journals[i].Operations = ops
+	}
+	return journals, nil
 }
 
 func NewQueryParams(from_date time.Time, to_date time.Time, page_size int, page int, branch_id string) models.JournalQueryParams {
@@ -134,7 +165,7 @@ func (d *DashboardHandler) ServeDashBoardGeneral(c *fiber.Ctx) error {
 
 	var allJournals []models.Journal
 	if branch_id != "" {
-		journals, err := journal_handlers.QueryJournals(span, ctx, c, NewQueryParams(from_date_time, to_date_time, length, 1, branch_id), d.journals)
+		journals, err := d.queryJournals(ctx, NewQueryParams(from_date_time, to_date_time, length, 1, branch_id))
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"message": "Failed to get journal data",
@@ -143,7 +174,7 @@ func (d *DashboardHandler) ServeDashBoardGeneral(c *fiber.Ctx) error {
 		allJournals = journals
 	} else {
 		for _, branch := range branches {
-			journals, err := journal_handlers.QueryJournals(span, ctx, c, NewQueryParams(from_date_time, to_date_time, length, 1, branch.BranchID), d.journals)
+			journals, err := d.queryJournals(ctx, NewQueryParams(from_date_time, to_date_time, length, 1, branch.BranchID))
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to get journal data for branch %s", branch.BranchName)
 				continue
@@ -200,7 +231,7 @@ func (d *DashboardHandler) ServeDashBoardDays(c *fiber.Ctx) error {
 	log.Info().Msgf("Length: %d", length)
 	if branch_id != "" {
 		// Query for specific branch
-		journals, err := journal_handlers.QueryJournals(span, ctx, c, NewQueryParams(from_date_time, to_date_time, length, 1, branch_id), d.journals)
+		journals, err := d.queryJournals(ctx, NewQueryParams(from_date_time, to_date_time, length, 1, branch_id))
 
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -212,7 +243,7 @@ func (d *DashboardHandler) ServeDashBoardDays(c *fiber.Ctx) error {
 		// Query for all branches
 
 		for _, branch := range branches {
-			journals, err := journal_handlers.QueryJournals(span, ctx, c, NewQueryParams(from_date_time, to_date_time, length, 1, branch.BranchID), d.journals)
+			journals, err := d.queryJournals(ctx, NewQueryParams(from_date_time, to_date_time, length, 1, branch.BranchID))
 
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to get journal data for branch %s", branch.BranchName)
@@ -262,13 +293,13 @@ func (d *DashboardHandler) ServeDashBoardComparison(c *fiber.Ctx) error {
 
 		var journals []models.Journal
 		if branchID != "" {
-			j, err := journal_handlers.QueryJournals(span, ctx, c, NewQueryParams(fromTime, toTime, 200, 1, branchID), d.journals)
+			j, err := d.queryJournals(ctx, NewQueryParams(fromTime, toTime, 200, 1, branchID))
 			if err == nil {
 				journals = j
 			}
 		} else {
 			for _, br := range branches {
-				j, err := journal_handlers.QueryJournals(span, ctx, c, NewQueryParams(fromTime, toTime, 200, 1, br.BranchID), d.journals)
+				j, err := d.queryJournals(ctx, NewQueryParams(fromTime, toTime, 200, 1, br.BranchID))
 				if err != nil {
 					log.Error().Err(err).Msgf("Failed to get journal data for branch %s", br.BranchName)
 					continue

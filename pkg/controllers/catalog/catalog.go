@@ -6,27 +6,27 @@
 package catalog
 
 import (
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
-	catalogrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/catalog"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
+	catalogrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/catalog"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // CatalogController manages categories and brands for staff. Reads/writes go
 // through Repo; the controller only parses requests, logs audit activity and
 // renders the response envelope.
 type CatalogController struct {
-	Repo                 *catalogrepo.CatalogRepository
-	ActivitiesCollection *mongo.Collection
+	Repo           *catalogrepo.CatalogRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
 }
 
-func New(db *mongo.Database) *CatalogController {
+func New(db *gorm.DB) *CatalogController {
 	return &CatalogController{
-		Repo:                 catalogrepo.New(db),
-		ActivitiesCollection: db.Collection("activities"),
+		Repo:           catalogrepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
 	}
 }
 
@@ -89,7 +89,7 @@ func (ctrl *CatalogController) CreateCategory(c *fiber.Ctx) error {
 	if err != nil {
 		return models.RespondRepoError(c, err)
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateCategory, category.ID, ctrl.ActivitiesCollection)
+	ctrl.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateCategory, category.ID)
 	log.Info().Str("id", category.ID).Msg("Category created")
 	return c.Status(fiber.StatusCreated).JSON(models.NewOutput(category))
 }
@@ -115,7 +115,7 @@ func (ctrl *CatalogController) UpdateCategory(c *fiber.Ctx) error {
 	if err != nil {
 		return models.RespondRepoError(c, err)
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeEditCategory, fiber.Map{"id": c.Params("id"), "update": in}, ctrl.ActivitiesCollection)
+	ctrl.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeEditCategory, fiber.Map{"id": c.Params("id"), "update": in})
 	return c.JSON(models.NewOutput(category))
 }
 
@@ -132,7 +132,7 @@ func (ctrl *CatalogController) DeleteCategory(c *fiber.Ctx) error {
 	if err := ctrl.Repo.DeleteCategory(c.Context(), c.Params("id")); err != nil {
 		return models.RespondRepoError(c, err)
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeDeleteCategory, c.Params("id"), ctrl.ActivitiesCollection)
+	ctrl.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeDeleteCategory, c.Params("id"))
 	return c.JSON(models.NewOutput(models.MessageResponse{Message: "category deleted"}))
 }
 
@@ -195,7 +195,7 @@ func (ctrl *CatalogController) CreateBrand(c *fiber.Ctx) error {
 	if err != nil {
 		return models.RespondRepoError(c, err)
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateBrand, brand.ID, ctrl.ActivitiesCollection)
+	ctrl.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateBrand, brand.ID)
 	log.Info().Str("id", brand.ID).Msg("Brand created")
 	return c.Status(fiber.StatusCreated).JSON(models.NewOutput(brand))
 }
@@ -221,7 +221,7 @@ func (ctrl *CatalogController) UpdateBrand(c *fiber.Ctx) error {
 	if err != nil {
 		return models.RespondRepoError(c, err)
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeEditBrand, fiber.Map{"id": c.Params("id"), "update": in}, ctrl.ActivitiesCollection)
+	ctrl.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeEditBrand, fiber.Map{"id": c.Params("id"), "update": in})
 	return c.JSON(models.NewOutput(brand))
 }
 
@@ -238,6 +238,6 @@ func (ctrl *CatalogController) DeleteBrand(c *fiber.Ctx) error {
 	if err := ctrl.Repo.DeleteBrand(c.Context(), c.Params("id")); err != nil {
 		return models.RespondRepoError(c, err)
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeDeleteBrand, c.Params("id"), ctrl.ActivitiesCollection)
+	ctrl.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeDeleteBrand, c.Params("id"))
 	return c.JSON(models.NewOutput(models.MessageResponse{Message: "brand deleted"}))
 }

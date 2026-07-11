@@ -2,14 +2,17 @@
 // accounting core. A journal is a per-branch daily shift holding operations
 // (transactions); operations may only be mutated while the shift is open.
 //
-// This package owns every mongo/bson interaction for the journals and
-// operations controllers, mirroring the suppliers/finance repositories: the
-// controllers hold a *JournalsRepository and call these methods instead of
-// touching collections directly. Multi-document writes (close/reopen shift,
-// operation create/update/delete) run inside MongoDB transactions and therefore
-// require a replica set; the session management is replicated here exactly as it
-// lived in the controllers, with every filter, update document, $inc/$push and
-// money/accounting calculation preserved byte-for-byte.
+// This package owns every database interaction for the journals and operations
+// controllers, mirroring the other ported repositories: the controllers hold a
+// *JournalsRepository and call these methods instead of touching the database
+// directly. Under Postgres a journal's operations are no longer an embedded array
+// — they are rows in the `transactions` table whose `journal_id` points back at
+// the journal — so "load a journal with its operations" is a journal row plus a
+// query of its transactions. Every multi-row write (close/reopen shift, operation
+// create/update/delete) runs inside one gorm transaction so all writes commit
+// atomically. The shared money math (sales/supplier ledger writes) lives in
+// pkg/repository/ledger; the journal total/terminal_income/cash_left accounting
+// preserves the original MongoDB behaviour.
 package journals
 
 import (
@@ -18,192 +21,117 @@ import (
 	"time"
 
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/ledger"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
-	sales "github.com/aslon1213/g4h_pos_erp/pkg/repository/sales"
-	"github.com/aslon1213/g4h_pos_erp/pkg/repository/suppliers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/utils"
-	"github.com/aslon1213/g4h_pos_erp/platform/database"
 
-	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
-// JournalsRepository owns the journals, transactions, finance and suppliers
-// collections. transactions/finance are needed because journal mutations roll
-// up into branch finance balances and the transactions collection; suppliers is
-// needed so an operation can apply a supplier transaction (via the exported
-// suppliers.NewSupplierTransaction) inside the journal's own session.
+// JournalsRepository owns journal and transaction persistence. Journal mutations
+// roll up into the journal totals and, via the ledger primitives, into branch
+// finance balances and the supplier balances.
 type JournalsRepository struct {
-	journals     *mongo.Collection
-	finance      *mongo.Collection
-	transactions *mongo.Collection
-	suppliers    *mongo.Collection
+	db *gorm.DB
 }
 
-// New builds the repository and ensures the unique (date, branch) journal index
-// exists, mirroring the controller constructor.
-func New(db *mongo.Database) *JournalsRepository {
-	journals := db.Collection("journals")
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "date", Value: -1},
-			{Key: "branch", Value: -1},
-		},
-		Options: options.Index().SetUnique(true),
-	}
-	if _, err := journals.Indexes().CreateOne(context.Background(), indexModel); err != nil {
-		log.Error().Err(err).Msg("Failed to create index for journals")
-	}
-	return &JournalsRepository{
-		journals:     journals,
-		finance:      db.Collection("finance"),
-		transactions: db.Collection("transactions"),
-		suppliers:    db.Collection("suppliers"),
-	}
+// New builds the repository. The unique (date, branch_id) journal constraint is
+// enforced by the schema (journals_date_branch_idx), so no index bootstrap is
+// needed here.
+func New(db *gorm.DB) *JournalsRepository {
+	return &JournalsRepository{db: db}
 }
 
-// GetByID returns a single journal by its id (hex ObjectID or raw string _id),
-// optionally resolving its operations against the transactions collection.
-// Returns repoerr.ErrNotFound when no journal matches.
+// GetByID returns a single journal by its id, optionally resolving its operations
+// (the transactions whose journal_id equals the journal id). Returns
+// repoerr.ErrNotFound when no journal matches.
 func (r *JournalsRepository) GetByID(ctx context.Context, id string, fetchTransactions bool) (*models.Journal, error) {
-	return r.fetchByID(ctx, id, fetchTransactions)
+	return r.fetchByID(ctx, r.db, id, fetchTransactions)
 }
 
-// fetchByID reproduces the controller's FetchJournalByID lookup pipeline. It
-// accepts both an ObjectID hex and a raw string id so callers that pass either
-// form resolve the same document.
-func (r *JournalsRepository) fetchByID(ctx context.Context, id string, fetchTransactions bool) (*models.Journal, error) {
-	journalID, err := bson.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, repoerr.ErrInvalidInput
-	}
-
-	pipeline := mongo.Pipeline{}
-	if fetchTransactions {
-		pipeline = mongo.Pipeline{
-			{{Key: "$match", Value: bson.D{
-				{Key: "$or", Value: bson.A{
-					bson.D{{Key: "_id", Value: journalID}},
-					bson.D{{Key: "_id", Value: id}},
-				}},
-			}}},
-			{
-				{Key: "$lookup", Value: bson.M{
-					"from":         "transactions",
-					"localField":   "operations",
-					"foreignField": "_id",
-					"as":           "transactions",
-				}},
-			},
-			{
-				{Key: "$project", Value: bson.M{
-					"date":            1,
-					"total":           1,
-					"shift_is_closed": 1,
-					"terminal_income": 1,
-					"cash_left":       1,
-					"branch":          1,
-					"operations":      "$transactions",
-				}},
-			},
-		}
-	} else {
-		pipeline = mongo.Pipeline{
-			{{Key: "$match", Value: bson.D{{Key: "_id", Value: journalID}}}},
-		}
-	}
-
-	cursor, err := r.journals.Aggregate(ctx, pipeline)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var results []models.Journal
-	if err := cursor.All(ctx, &results); err != nil {
-		return nil, err
-	}
-	if len(results) == 0 {
+// fetchByID loads a journal row and, when fetchTransactions is set, attaches its
+// operations (transactions with journal_id = id). The db handle may be the base
+// connection or a transaction handle so callers can reuse it inside a tx.
+func (r *JournalsRepository) fetchByID(ctx context.Context, db *gorm.DB, id string, fetchTransactions bool) (*models.Journal, error) {
+	journal, err := gorm.G[models.Journal](db).Where("id = ?", id).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
-	return &results[0], nil
+	if err != nil {
+		return nil, err
+	}
+	if fetchTransactions {
+		ops, err := r.loadOperations(ctx, db, id)
+		if err != nil {
+			return nil, err
+		}
+		journal.Operations = ops
+	}
+	return &journal, nil
+}
+
+// loadOperations returns a journal's operations (the transactions that point at
+// it), ordered oldest-first so positional close/reopen logic is deterministic.
+func (r *JournalsRepository) loadOperations(ctx context.Context, db *gorm.DB, journalID string) ([]models.Transaction, error) {
+	ops, err := gorm.G[models.Transaction](db).Where("journal_id = ?", journalID).Order("created_at ASC").Find(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ops, nil
 }
 
 // Query returns journals matching the query params, with pagination, branch
-// filtering and the optional total-value range filter, resolving operations
-// against the transactions collection. Mirrors the controller's QueryJournals.
+// filtering and the optional total-value range filter, each journal's operations
+// attached. Mirrors the controller's original QueryJournals.
 func (r *JournalsRepository) Query(ctx context.Context, queryParams models.JournalQueryParams) ([]models.Journal, error) {
-	match := bson.M{}
+	// Seed the chain with Order so the variable is a ChainInterface and the
+	// optional filters below can be appended conditionally.
+	q := gorm.G[models.Journal](r.db).Order("date DESC")
 	if queryParams.BranchID != "" {
-		match["branch._id"] = queryParams.BranchID
+		q = q.Where("branch_id = ?", queryParams.BranchID)
 	}
 	if queryParams.Total.Use {
-		match["total"] = bson.M{"$gte": queryParams.Total.Min, "$lte": queryParams.Total.Max}
+		q = q.Where("total >= ? AND total <= ?", queryParams.Total.Min, queryParams.Total.Max)
 	}
+	q = q.Offset((queryParams.Page - 1) * queryParams.PageSize).Limit(queryParams.PageSize)
 
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: match}},
-		{{Key: "$sort", Value: bson.D{{Key: "date", Value: -1}}}},
-		{{Key: "$skip", Value: (queryParams.Page - 1) * queryParams.PageSize}},
-		{{Key: "$limit", Value: queryParams.PageSize}},
-		{
-			{Key: "$lookup", Value: bson.M{
-				"from":         "transactions",
-				"localField":   "operations",
-				"foreignField": "_id",
-				"as":           "transactions",
-			}},
-		},
-		{
-			{Key: "$project", Value: bson.M{
-				"date":            1,
-				"total":           1,
-				"shift_is_closed": 1,
-				"terminal_income": 1,
-				"cash_left":       1,
-				"branch":          1,
-				"operations":      "$transactions",
-			}},
-		},
-	}
-
-	cursor, err := r.journals.Aggregate(ctx, pipeline)
+	journals, err := q.Find(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
-	var results []models.Journal
-	if err := cursor.All(ctx, &results); err != nil {
-		return nil, err
+	for i := range journals {
+		ops, err := r.loadOperations(ctx, r.db, journals[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		journals[i].Operations = ops
 	}
-	return results, nil
+	return journals, nil
 }
 
-// resolveBranch looks the finance branch up by name (case-insensitive regex) or
+// resolveBranch looks the branch finance row up by name (case-insensitive) or
 // branch id, mirroring the controller's NewJournalEntry lookup. Returns
 // repoerr.ErrNotFound when no branch matches.
 func (r *JournalsRepository) resolveBranch(ctx context.Context, branchNameOrID string) (*models.BranchFinance, error) {
-	financeBranch := models.BranchFinance{}
-	err := r.finance.FindOne(ctx, bson.M{"$or": []bson.M{
-		{"branch_name": bson.M{"$regex": branchNameOrID, "$options": "i"}},
-		{"branch_id": branchNameOrID},
-	}}).Decode(&financeBranch)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	branch, err := gorm.G[models.BranchFinance](r.db).
+		Where("branch_name ILIKE ? OR branch_id = ?", "%"+branchNameOrID+"%", branchNameOrID).
+		First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &financeBranch, nil
+	return &branch, nil
 }
 
 // Create inserts a new journal (open shift, zeroed totals) for the branch named
 // or identified by input.BranchNameOrID. The date is normalised to midnight in
 // the configured timezone, matching the controller. Returns repoerr.ErrNotFound
-// if the branch does not exist.
+// if the branch does not exist and repoerr.ErrConflict when a journal already
+// exists for that (date, branch).
 func (r *JournalsRepository) Create(ctx context.Context, input models.NewJournalEntryInput) (*models.JournalWithTransactionID, error) {
 	financeBranch, err := r.resolveBranch(ctx, input.BranchNameOrID)
 	if err != nil {
@@ -217,295 +145,255 @@ func (r *JournalsRepository) Create(ctx context.Context, input models.NewJournal
 
 	branch := models.Branch_names[input.BranchNameOrID]
 
-	journal := models.JournalWithTransactionID{
-		JournalBase: models.JournalBase{
-			Branch: models.Branch{
-				Name:     branch.Name,
-				Location: branch.Location,
-				Phone:    branch.Phone,
-				ID:       financeBranch.BranchID,
-			},
-			Date:            input.Date,
-			Shift_is_closed: false,
-			Terminal_income: 0,
-			Cash_left:       0,
-			Total:           0,
-			ID:              bson.NewObjectID(),
+	base := models.JournalBase{
+		Branch: models.Branch{
+			Name:     branch.Name,
+			Location: branch.Location,
+			Phone:    branch.Phone,
+			ID:       financeBranch.BranchID,
 		},
-		Operations: []string{},
+		Date:            input.Date,
+		Shift_is_closed: false,
+		Terminal_income: 0,
+		Cash_left:       0,
+		Total:           0,
+		ID:              uuid.New().String(),
 	}
 
-	if _, err := r.journals.InsertOne(ctx, journal); err != nil {
+	// Insert through models.Journal so the "journals" table name is used; the
+	// Operations field is gorm:"-" and therefore ignored on write.
+	journal := models.Journal{JournalBase: base, Operations: []models.Transaction{}}
+	if err := gorm.G[models.Journal](r.db).Create(ctx, &journal); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, repoerr.ErrConflict
+		}
 		return nil, err
 	}
-	return &journal, nil
+
+	return &models.JournalWithTransactionID{JournalBase: base, Operations: []string{}}, nil
 }
 
-// Close closes a journal shift inside a MongoDB transaction: it creates the
+// Close closes a journal shift inside one gorm transaction: it creates the
 // cash-left and terminal-income closing transactions (sales credits on the
-// branch), pushes them onto the journal's operations, and stamps the shift as
-// closed with the new total. Returns the updated journal (with the looked-up
-// operations and adjusted totals). Money semantics are preserved exactly from
-// the controller: total = previous total + cash_left + terminal_income.
+// branch), attaches them to the journal (journal_id) so they become operations,
+// and stamps the shift as closed with the new total. Money semantics are
+// preserved exactly: total = previous total + cash_left + terminal_income.
 func (r *JournalsRepository) Close(ctx context.Context, journalID string, input models.CloseJournalEntryInput) (*models.Journal, error) {
-	oid, err := bson.ObjectIDFromHex(journalID)
-	if err != nil {
-		return nil, repoerr.ErrInvalidInput
-	}
+	var result *models.Journal
 
-	// start a db transaction
-	ses, sessCtx, err := database.StartTransaction(r.journals.Database().Client())
-	if err != nil {
-		return nil, err
-	}
-	defer ses.EndSession(sessCtx)
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		journal, err := r.fetchByID(ctx, tx, journalID, true)
+		if err != nil {
+			return err
+		}
+		branchID := journal.Branch.ID
 
-	// get journal info
-	journal, err := r.fetchByID(sessCtx, journalID, true)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
+		cashBase := models.TransactionBase{
+			Amount:        input.CashLeft,
+			Description:   "Cash left at the end of the day",
+			PaymentMethod: models.PaymentMethodCash,
+			Type:          models.TransactionTypeCredit,
+		}
+		terminalBase := models.TransactionBase{
+			Amount:        input.TerminalIncome,
+			Description:   "Terminal income at the end of the day",
+			PaymentMethod: models.PaymentMethodTerminal,
+			Type:          models.TransactionTypeCredit,
+		}
 
-	branchID := journal.Branch.ID
+		terminalTx, err := ledger.ApplySalesTransaction(ctx, tx, terminalBase, branchID)
+		if err != nil {
+			return err
+		}
+		cashTx, err := ledger.ApplySalesTransaction(ctx, tx, cashBase, branchID)
+		if err != nil {
+			return err
+		}
 
-	cash_transaction_base := models.TransactionBase{
-		Amount:        input.CashLeft,
-		Description:   "Cash left at the end of the day",
-		PaymentMethod: models.PaymentMethodCash,
-		Type:          models.TransactionTypeCredit,
-	}
-	terminal_transaction_base := models.TransactionBase{
-		Amount:        input.TerminalIncome,
-		Description:   "Terminal income at the end of the day",
-		PaymentMethod: models.PaymentMethodTerminal,
-		Type:          models.TransactionTypeCredit,
-	}
-	terminal_transaction, err := sales.NewSalesTransaction(
-		sessCtx,
-		terminal_transaction_base,
-		branchID,
-		r.transactions,
-		r.finance,
-	)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	cash_transaction, err := sales.NewSalesTransaction(
-		sessCtx,
-		cash_transaction_base,
-		branchID,
-		r.transactions,
-		r.finance,
-	)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
+		// Attach the two closing transactions to the journal (replaces the Mongo
+		// $push onto operations) so they are loaded as operations on re-fetch and
+		// can be identified on reopen.
+		if _, err := gorm.G[models.Transaction](tx).
+			Where("id IN ?", []string{terminalTx.ID, cashTx.ID}).
+			Update(ctx, "journal_id", journalID); err != nil {
+			return err
+		}
 
-	// update the journal
-	_, err = r.journals.UpdateOne(sessCtx,
-		bson.M{"_id": oid},
-		bson.M{
-			"$set": bson.M{
-				"cash_left": input.CashLeft, "terminal_income": input.TerminalIncome, "shift_is_closed": true, "total": journal.Total + input.CashLeft + input.TerminalIncome,
-			},
-			"$push": bson.M{"operations": bson.M{"$each": []string{terminal_transaction.ID, cash_transaction.ID}}},
-		},
-	)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	// commit the transaction
-	if err := ses.CommitTransaction(sessCtx); err != nil {
-		return nil, err
-	}
+		newTotal := journal.Total + input.CashLeft + input.TerminalIncome
+		res := tx.Table("journals").Where("id = ?", journalID).Updates(map[string]interface{}{
+			"cash_left":       input.CashLeft,
+			"terminal_income": input.TerminalIncome,
+			"shift_is_closed": true,
+			"total":           newTotal,
+		})
+		if res.Error != nil {
+			return res.Error
+		}
 
-	journal.Total = journal.Total + input.CashLeft + input.TerminalIncome
-	journal.Cash_left = input.CashLeft
-	journal.Terminal_income = input.TerminalIncome
-	return journal, nil
-}
-
-// ReOpen reverses a Close inside a MongoDB transaction: it deletes the last two
-// (cash, terminal) closing sales transactions, reverts the journal's
-// shift_is_closed/cash_left/terminal_income/total and trims the two operation
-// ids, then returns the freshly re-fetched journal. Logic preserved exactly from
-// the controller, including operating on the last two operation entries.
-func (r *JournalsRepository) ReOpen(ctx context.Context, journalID string) (*models.Journal, error) {
-	oid, err := bson.ObjectIDFromHex(journalID)
-	if err != nil {
-		return nil, repoerr.ErrInvalidInput
-	}
-
-	// start a db transaction
-	ses, sessCtx, err := database.StartTransaction(r.journals.Database().Client())
-	if err != nil {
-		return nil, err
-	}
-	defer ses.EndSession(sessCtx)
-
-	// fetch journal Info
-	journal := models.JournalWithTransactionID{}
-	err = r.journals.FindOne(sessCtx, bson.M{"_id": oid}).Decode(&journal)
-	if errors.Is(err, mongo.ErrNoDocuments) {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, repoerr.ErrNotFound
-	}
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
-
-	// delete two transactions - [cash, terminal by ID]
-	_, err = sales.DeleteSalesTransaction(sessCtx, journal.Operations[len(journal.Operations)-1], r.transactions, r.finance)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	_, err = sales.DeleteSalesTransaction(sessCtx, journal.Operations[len(journal.Operations)-2], r.transactions, r.finance)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	_, err = r.journals.UpdateByID(sessCtx, journal.ID, bson.M{
-		"$set": bson.M{"shift_is_closed": false, "cash_left": 0, "terminal_income": 0, "total": journal.Total - (journal.Cash_left + journal.Terminal_income), "operations": journal.Operations[:len(journal.Operations)-2]},
+		journal.Total = newTotal
+		journal.Cash_left = input.CashLeft
+		journal.Terminal_income = input.TerminalIncome
+		result = journal
+		return nil
 	})
 	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
 		return nil, err
 	}
-	// commit the transaction
-	if err := ses.CommitTransaction(sessCtx); err != nil {
-		return nil, err
-	}
-
-	journal_new, err := r.fetchByID(sessCtx, journalID, true)
-	if err != nil {
-		return nil, err
-	}
-	return journal_new, nil
+	return result, nil
 }
 
-// AddOperation creates a new operation transaction (a sales credit, or a
-// supplier transaction when input.SupplierTransaction is set) for the given
-// journal and rolls it up onto the journal total/operations, inside a MongoDB
-// transaction. Returns the journal that was fetched at the start (matching the
-// controller, which responds with the pre-update journal value). The supplier
-// branch invariant — input.Type is forced to credit in both arms — is preserved.
+// ReOpen reverses a Close inside one gorm transaction: it deletes the two most
+// recent (terminal, cash) closing sales transactions — reversing their branch
+// balance effect via the ledger — reverts the journal's
+// shift_is_closed/cash_left/terminal_income/total, and returns the freshly
+// re-fetched journal. Mirrors the controller's "delete the last two operations"
+// logic.
+func (r *JournalsRepository) ReOpen(ctx context.Context, journalID string) (*models.Journal, error) {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		journal, err := gorm.G[models.Journal](tx).Where("id = ?", journalID).First(ctx)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return repoerr.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+
+		ops, err := r.loadOperations(ctx, tx, journalID)
+		if err != nil {
+			return err
+		}
+		if len(ops) < 2 {
+			// Not a closed shift (nothing to reverse). The Mongo original would
+			// have panicked on the missing operations; fail cleanly instead.
+			return repoerr.ErrInvalidInput
+		}
+
+		// delete the two closing transactions (last two by creation order)
+		if _, err := ledger.DeleteSalesTransaction(ctx, tx, ops[len(ops)-1].ID); err != nil {
+			return err
+		}
+		if _, err := ledger.DeleteSalesTransaction(ctx, tx, ops[len(ops)-2].ID); err != nil {
+			return err
+		}
+
+		newTotal := journal.Total - (journal.Cash_left + journal.Terminal_income)
+		res := tx.Table("journals").Where("id = ?", journalID).Updates(map[string]interface{}{
+			"shift_is_closed": false,
+			"cash_left":       0,
+			"terminal_income": 0,
+			"total":           newTotal,
+		})
+		if res.Error != nil {
+			return res.Error
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return r.fetchByID(ctx, r.db, journalID, true)
+}
+
+// AddOperation creates a new operation transaction (a sales credit, or a supplier
+// transaction when input.SupplierTransaction is set), attaches it to the journal
+// and rolls its amount up onto the journal total, inside one gorm transaction.
+// Returns the journal fetched at the start (matching the controller, which
+// responds with the pre-update journal value). input.Type is forced to credit in
+// both arms, preserving the original invariant.
 func (r *JournalsRepository) AddOperation(ctx context.Context, journalID string, input models.JournalOperationInput) (*models.Journal, error) {
-	// start a new session and transaction
-	ses, sessCtx, err := database.StartTransaction(r.journals.Database().Client())
-	if err != nil {
-		return nil, err
-	}
-	defer ses.EndSession(sessCtx)
+	var result *models.Journal
 
-	ids := []string{}
-	journal, err := r.fetchByID(sessCtx, journalID, true)
-	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
-		return nil, err
-	}
-
-	if !input.SupplierTransaction {
-		input.TransactionBase.Type = models.TransactionTypeCredit
-		sales_transaction, err := sales.NewSalesTransaction(sessCtx, input.TransactionBase, journal.Branch.ID, r.transactions, r.finance)
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		journal, err := r.fetchByID(ctx, tx, journalID, true)
 		if err != nil {
-			_ = ses.AbortTransaction(sessCtx)
-			return nil, err
+			return err
 		}
-		ids = append(ids, sales_transaction.ID)
-	} else {
-		input.TransactionBase.Type = models.TransactionTypeCredit
-		if input.SupplierID == "" {
-			_ = ses.AbortTransaction(sessCtx)
-			return nil, repoerr.ErrInvalidInput
-		}
-		supplier_transaction, err := suppliers.NewSupplierTransaction(sessCtx, input.TransactionBase, input.SupplierID, journal.Branch.ID, r.transactions, r.journals, r.suppliers)
-		if err != nil {
-			_ = ses.AbortTransaction(sessCtx)
-			return nil, err
-		}
-		ids = append(ids, supplier_transaction.ID)
-	}
 
-	_, err = r.journals.UpdateByID(
-		sessCtx,
-		journal.ID,
-		bson.M{
-			"$inc": bson.M{
-				"total": input.Amount,
-			},
-			"$push": bson.M{
-				"operations": bson.M{
-					"$each": ids,
-				},
-			},
-		},
-	)
+		var operation *models.Transaction
+		if !input.SupplierTransaction {
+			input.TransactionBase.Type = models.TransactionTypeCredit
+			operation, err = ledger.ApplySalesTransaction(ctx, tx, input.TransactionBase, journal.Branch.ID)
+			if err != nil {
+				return err
+			}
+		} else {
+			input.TransactionBase.Type = models.TransactionTypeCredit
+			if input.SupplierID == "" {
+				return repoerr.ErrInvalidInput
+			}
+			operation, err = ledger.ApplySupplierTransaction(ctx, tx, input.TransactionBase, input.SupplierID, journal.Branch.ID)
+			if err != nil {
+				return err
+			}
+		}
+
+		// attach the new transaction to the journal (replaces the Mongo $push)
+		if _, err := gorm.G[models.Transaction](tx).
+			Where("id = ?", operation.ID).
+			Update(ctx, "journal_id", journalID); err != nil {
+			return err
+		}
+
+		// roll the operation amount up onto the journal total
+		res := tx.Table("journals").Where("id = ?", journalID).
+			Update("total", gorm.Expr("total + ?", input.Amount))
+		if res.Error != nil {
+			return res.Error
+		}
+
+		result = journal
+		return nil
+	})
 	if err != nil {
-		_ = ses.AbortTransaction(sessCtx)
 		return nil, err
 	}
-
-	// commit the transaction
-	if err := ses.CommitTransaction(sessCtx); err != nil {
-		return nil, err
-	}
-
-	return journal, nil
+	return result, nil
 }
 
 // UpdateOperation edits the amount (and optionally description) of an operation
-// on an already-loaded journal, inside a MongoDB transaction: the transaction
-// document, journal total and branch finance total are all adjusted by the diff
-// (old amount - new amount), preserving the controller's accounting exactly. The
-// passed-in journal is mutated in place (total and operations) and returned.
-// Returns repoerr.ErrInvalidInput for a non-positive amount and
-// repoerr.ErrNotFound when the operation is not on the journal.
+// on an already-loaded journal, inside one gorm transaction: the transaction row
+// and the journal total are adjusted by the diff (old amount - new amount),
+// preserving the controller's accounting exactly. The passed-in journal is
+// mutated in place (total and operations) and returned. Returns
+// repoerr.ErrInvalidInput for a non-positive amount and repoerr.ErrNotFound when
+// the operation is not on the journal.
 func (r *JournalsRepository) UpdateOperation(ctx context.Context, journal *models.Journal, operationID string, amount int, description string) (*models.Journal, error) {
 	if amount <= 0 {
 		return nil, repoerr.ErrInvalidInput
 	}
 
-	// start a new session and transaction
-	ses, sessCtx, err := database.StartTransaction(r.journals.Database().Client())
-	if err != nil {
-		return nil, err
-	}
-	defer ses.EndSession(sessCtx)
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		for _, operation := range journal.Operations {
+			if operation.ID != operationID {
+				continue
+			}
 
-	branch_id := journal.Branch.ID
-
-	for _, operation := range journal.Operations {
-		if operation.ID == operationID {
-			// update transaction in transactions collection
-			update_query := bson.M{
-				"$set": bson.M{
-					"transactionbase.amount": uint32(amount),
-					"updated_at":             time.Now(),
-				},
+			// update the transaction row
+			set := map[string]interface{}{
+				"amount":     uint32(amount),
+				"updated_at": time.Now(),
 			}
 			if description != "" {
-				update_query["$set"].(bson.M)["transactionbase.description"] = description
+				set["description"] = description
+			}
+			if res := tx.Table("transactions").Where("id = ?", operation.ID).Updates(set); res.Error != nil {
+				return res.Error
 			}
 
-			_, err = r.transactions.UpdateOne(sessCtx, bson.M{"_id": operation.ID}, update_query)
-			if err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
-			}
-			// update journal total
+			// adjust the journal total by the diff (old - new)
 			diff := int32(int(operation.Amount) - amount)
-			_, err = r.journals.UpdateOne(sessCtx, bson.M{"_id": journal.ID}, bson.M{"$inc": bson.M{"total": -diff}})
-			if err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
+			if res := tx.Table("journals").Where("id = ?", journal.ID).
+				Update("total", gorm.Expr("total + ?", -diff)); res.Error != nil {
+				return res.Error
 			}
-			new_operation := models.Transaction{
+
+			// NOTE: the Mongo original also incremented a branch-finance "total"
+			// field; the Postgres branch_finance table has no such column (it was
+			// dead write-only data never read back), so that write is dropped.
+
+			newOperation := models.Transaction{
 				ID: operation.ID,
 				TransactionBase: models.TransactionBase{
 					Amount:      uint32(amount),
@@ -515,81 +403,55 @@ func (r *JournalsRepository) UpdateOperation(ctx context.Context, journal *model
 				UpdatedAt: time.Now(),
 			}
 			if description != "" {
-				new_operation.Description = description
+				newOperation.Description = description
 			}
 			journal.Total -= uint32(diff)
-			journal.Operations = utils.ReplaceElement(journal.Operations, operation, new_operation)
-
-			// update finance of branch
-			_, err = r.finance.UpdateOne(sessCtx, bson.M{"branch_id": branch_id}, bson.M{"$inc": bson.M{"total": -diff}})
-			if err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
-			}
-			// commit the transaction
-			if err := ses.CommitTransaction(sessCtx); err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
-			}
-			return journal, nil
+			journal.Operations = utils.ReplaceElement(journal.Operations, operation, newOperation)
+			return nil
 		}
-	}
-	return nil, repoerr.ErrNotFound
-}
-
-// DeleteOperation removes an operation from an already-loaded journal inside a
-// MongoDB transaction: it deletes the transaction document, decrements the
-// branch finance total and the journal total by the operation amount, and pulls
-// the operation id off the journal. The passed-in journal is mutated in place
-// (operations and total) and returned. Returns repoerr.ErrNotFound when the
-// operation is not on the journal. Accounting preserved exactly from the
-// controller.
-func (r *JournalsRepository) DeleteOperation(ctx context.Context, journal *models.Journal, operationID string) (*models.Journal, error) {
-	// start a new session and transaction
-	ses, sessCtx, err := database.StartTransaction(r.journals.Database().Client())
+		return repoerr.ErrNotFound
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer ses.EndSession(sessCtx)
+	return journal, nil
+}
 
-	branch_id := journal.Branch.ID
-	// delete transaction from transactions collection
-	// check if the transaction exists
-	for _, operation := range journal.Operations {
-		if operation.ID == operationID {
-			// delete transaction from transactions collection
-			_, err = r.transactions.DeleteOne(sessCtx, bson.M{"_id": operation.ID})
-			if err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
+// DeleteOperation removes an operation from an already-loaded journal inside one
+// gorm transaction: it deletes the transaction row (which also clears its
+// journal_id link) and decrements the journal total by the operation amount. The
+// passed-in journal is mutated in place (operations and total) and returned.
+// Returns repoerr.ErrNotFound when the operation is not on the journal.
+func (r *JournalsRepository) DeleteOperation(ctx context.Context, journal *models.Journal, operationID string) (*models.Journal, error) {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		for _, operation := range journal.Operations {
+			if operation.ID != operationID {
+				continue
 			}
 
-			// update journal total, operations list
-			// update finance of branch
-			_, err = r.finance.UpdateOne(sessCtx, bson.M{"branch_id": branch_id}, bson.M{"$inc": bson.M{"total": -1 * int32(operation.Amount)}})
-			if err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
+			// delete the transaction row (removes it from the journal's operations)
+			if _, err := gorm.G[models.Transaction](tx).Where("id = ?", operation.ID).Delete(ctx); err != nil {
+				return err
 			}
 
-			// update journal total, operations list
-			_, err = r.journals.UpdateOne(sessCtx, bson.M{"_id": journal.ID}, bson.M{"$pull": bson.M{"operations": operationID}, "$inc": bson.M{"total": -1 * int32(operation.Amount)}})
-			if err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
+			// NOTE: the Mongo original also decremented a branch-finance "total"
+			// field; the Postgres branch_finance table has no such column, so that
+			// write is dropped (see UpdateOperation).
+
+			// decrement the journal total by the operation amount
+			if res := tx.Table("journals").Where("id = ?", journal.ID).
+				Update("total", gorm.Expr("total - ?", int32(operation.Amount))); res.Error != nil {
+				return res.Error
 			}
+
 			journal.Operations = utils.RemoveElement(journal.Operations, operation)
 			journal.Total -= operation.Amount
-
-			// commit the transaction
-			if err := ses.CommitTransaction(sessCtx); err != nil {
-				_ = ses.AbortTransaction(sessCtx)
-				return nil, err
-			}
-			return journal, nil
+			return nil
 		}
+		return repoerr.ErrNotFound
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	_ = ses.AbortTransaction(sessCtx)
-	return nil, repoerr.ErrNotFound
+	return journal, nil
 }

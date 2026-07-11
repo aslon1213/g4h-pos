@@ -10,7 +10,7 @@ import (
 	storepromotions "github.com/aslon1213/g4h_pos_erp/pkg/controllers/store/promotions"
 	storereviews "github.com/aslon1213/g4h_pos_erp/pkg/controllers/store/reviews"
 	storewishlist "github.com/aslon1213/g4h_pos_erp/pkg/controllers/store/wishlist"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controllers aggregates every storefront controller so the wiring (app) and
@@ -27,7 +27,7 @@ type Controllers struct {
 	Promotions *storepromotions.Controller
 }
 
-func New(db *mongo.Database) *Controllers {
+func New(db *gorm.DB) *Controllers {
 	return &Controllers{
 		Auth:       storeauth.New(db),
 		Account:    storeaccount.New(db),

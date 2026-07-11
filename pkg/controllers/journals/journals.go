@@ -5,39 +5,37 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 	journalsrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/journals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"gorm.io/gorm"
 )
 
 // JournalHandlers exposes the admin journals endpoints. All database access goes
 // through Repo; the controller only parses requests, logs audit activity, and
 // renders the response envelope.
 type JournalHandlers struct {
-	ctx                  context.Context
-	Repo                 *journalsrepo.JournalsRepository
-	ActivitiesCollection *mongo.Collection
-	Tracer               trace.Tracer
+	ctx            context.Context
+	Repo           *journalsrepo.JournalsRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
+	Tracer         trace.Tracer
 }
 
-func New(db *mongo.Database) *JournalHandlers {
+func New(db *gorm.DB) *JournalHandlers {
 	ctx := context.Background()
-	activitiesCollection := db.Collection("activities")
 	tracer := otel.Tracer("journals")
 	return &JournalHandlers{
-		ctx:                  ctx,
-		Repo:                 journalsrepo.New(db),
-		ActivitiesCollection: activitiesCollection,
-		Tracer:               tracer,
+		ctx:            ctx,
+		Repo:           journalsrepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
+		Tracer:         tracer,
 	}
 }
 
@@ -124,7 +122,7 @@ func (j *JournalHandlers) NewJournalEntry(c *fiber.Ctx) error {
 		})
 	}
 
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateJournal, input, j.ActivitiesCollection)
+	j.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateJournal, input)
 
 	journal, err := j.Repo.Create(c.Context(), input)
 	if err != nil {
@@ -159,14 +157,7 @@ func (j *JournalHandlers) NewJournalEntry(c *fiber.Ctx) error {
 // @Router /api/v1/admin/journals/{journal_id}/close [post]
 func (j *JournalHandlers) CloseJournalEntry(c *fiber.Ctx) error {
 	log.Info().Msg("Closing journal entry")
-	journalID, err := ParseJournalID(c)
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse journal ID")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
+	journalID := c.Params("id")
 
 	input := models.CloseJournalEntryInput{}
 	if err := c.BodyParser(&input); err != nil {
@@ -176,13 +167,13 @@ func (j *JournalHandlers) CloseJournalEntry(c *fiber.Ctx) error {
 		})
 	}
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCloseJournal, map[string]string{
-		"journal_id":      journalID.Hex(),
+	j.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCloseJournal, map[string]string{
+		"journal_id":      journalID,
 		"cash_left":       fmt.Sprintf("%d", input.CashLeft),
 		"terminal_income": fmt.Sprintf("%d", input.TerminalIncome),
-	}, j.ActivitiesCollection)
+	})
 
-	journal, err := j.Repo.Close(c.Context(), journalID.Hex(), input)
+	journal, err := j.Repo.Close(c.Context(), journalID, input)
 	if err != nil {
 		// The original handler returned 400 when the journal could not be
 		// fetched, and 500 for every other (transaction/update/commit) failure.
@@ -214,33 +205,20 @@ func (j *JournalHandlers) CloseJournalEntry(c *fiber.Ctx) error {
 func (j *JournalHandlers) ReOpenJournalEntry(c *fiber.Ctx) error {
 	log.Info().Msg("Reopening journal entry")
 
-	journalID, err := ParseJournalID(c)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse journal ID")
-		return models.RespondError(c, fiber.StatusBadRequest, err.Error())
-	}
+	journalID := c.Params("id")
 
-	journal_new, err := j.Repo.ReOpen(c.Context(), journalID.Hex())
+	journal_new, err := j.Repo.ReOpen(c.Context(), journalID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to reopen journal entry")
 		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	log.Info().Msg("Successfully reopened journal entry")
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeReopenJournal, map[string]string{
-		"journal_id": journalID.Hex(),
-	}, j.ActivitiesCollection)
+	j.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeReopenJournal, map[string]string{
+		"journal_id": journalID,
+	})
 
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(journal_new))
-}
-
-func ParseJournalID(c *fiber.Ctx) (bson.ObjectID, error) {
-	journalID, err := bson.ObjectIDFromHex(c.Params("id"))
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse journal ID")
-		return bson.NilObjectID, err
-	}
-	return journalID, nil
 }
 
 // GetReport godoc
@@ -255,62 +233,4 @@ func ParseJournalID(c *fiber.Ctx) (bson.ObjectID, error) {
 func (j *JournalHandlers) GetReport(c *fiber.Ctx) error {
 	log.Info().Msg("Generating report")
 	panic("Not implemented")
-}
-
-// QueryJournals runs the journal query pipeline against the supplied collection.
-// It is retained as a package-level helper because the analytics dashboard
-// controller calls it directly with its own journals collection. The repository
-// owns the same logic for the journals controllers' own use; this helper mirrors
-// it byte-for-byte so analytics behaviour is unchanged.
-func QueryJournals(span trace.Span, ctx context.Context, c *fiber.Ctx, queryParams models.JournalQueryParams, journalsCollection *mongo.Collection) ([]models.Journal, error) {
-
-	match := bson.M{}
-	if queryParams.BranchID != "" {
-		match["branch._id"] = queryParams.BranchID
-	}
-	if queryParams.Total.Use {
-		match["total"] = bson.M{"$gte": queryParams.Total.Min, "$lte": queryParams.Total.Max}
-	}
-
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: match}},
-		{{Key: "$sort", Value: bson.D{{Key: "date", Value: -1}}}},              // Sort by date in ascending order
-		{{Key: "$skip", Value: (queryParams.Page - 1) * queryParams.PageSize}}, // Skip the first N documents = page_size * page_number
-		{{Key: "$limit", Value: queryParams.PageSize}},                         // Limit the number of documents returned = page_size
-		{
-			{Key: "$lookup", Value: bson.M{
-				"from":         "transactions",
-				"localField":   "operations",
-				"foreignField": "_id",
-				"as":           "transactions",
-			}},
-		},
-		{
-			{Key: "$project", Value: bson.M{
-				"date":            1,
-				"total":           1,
-				"shift_is_closed": 1,
-				"terminal_income": 1,
-				"cash_left":       1,
-				"branch":          1,
-				"operations":      "$transactions",
-			}},
-		},
-	}
-	span.AddEvent("Created pipeline")
-	cursor, err := journalsCollection.Aggregate(ctx, pipeline)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to aggregate journal entries")
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-	span.AddEvent("Got cursor")
-	var results []models.Journal
-	if err := cursor.All(ctx, &results); err != nil {
-		log.Error().Err(err).Msg("Failed to decode journal entries")
-		return nil, err
-	}
-	span.AddEvent("Got results", trace.WithAttributes(attribute.Int("results_count", len(results))))
-	log.Info().Int("results_count", len(results)).Msgf("Successfully queried journal entries")
-	return results, nil
 }

@@ -1,28 +1,27 @@
 package transactions
 
 import (
-	"context"
-
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	transactionsrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/transactions"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"gorm.io/gorm"
 )
 
+// TransactionsController exposes the admin transactions endpoints. All database
+// access goes through Repo; the controller parses requests and renders the
+// response envelope.
 type TransactionsController struct {
-	collection *mongo.Collection
-	logger     *zerolog.Logger
-	// cache      cache
+	Repo   *transactionsrepo.TransactionsRepository
+	logger *zerolog.Logger
 }
 
-func New(db *mongo.Database) *TransactionsController {
+func New(db *gorm.DB) *TransactionsController {
 	return &TransactionsController{
-		collection: db.Collection("transactions"),
-		logger:     &log.Logger,
+		Repo:   transactionsrepo.New(db),
+		logger: &log.Logger,
 	}
 }
 
@@ -79,61 +78,10 @@ func (s *TransactionsController) GetTransactionsByQueryParams(c *fiber.Ctx) erro
 		)
 	}
 
-	query := bson.M{}
-	if queryParams.Description != "" {
-		query["description"] = queryParams.Description
-	}
-	if queryParams.AmountMin != 0 {
-		query["amount"] = bson.M{"$gte": queryParams.AmountMin}
-	}
-	if queryParams.AmountMax != 0 {
-		query["amount"] = bson.M{"$lte": queryParams.AmountMax}
-	}
-	if queryParams.PaymentMethod != "" {
-		query["payment_method"] = queryParams.PaymentMethod
-	}
-	if queryParams.TypeOfTransaction != "" {
-		query["transactionbase.type"] = queryParams.TypeOfTransaction
-	}
-	if queryParams.InitiatorType != "" {
-		query["type"] = queryParams.InitiatorType
-	}
-	// if page and count are not provided the set default values
-	// page = 1, count = 10
-	if queryParams.Page == 0 {
-		queryParams.Page = 1
-	}
-	if queryParams.Count == 0 {
-		queryParams.Count = 10
-	}
-	if !queryParams.DateMax.IsZero() {
-		query["created_at"] = bson.M{"$lte": queryParams.DateMax}
-	}
-	if !queryParams.DateMin.IsZero() {
-		query["created_at"] = bson.M{"$gte": queryParams.DateMin}
-	}
-
-	// apply pagination --- move cursor to the correct page --- query.count * (query.page - 1): query.count * query.page
-	options := options.Find().SetSkip(int64(queryParams.Count * (queryParams.Page - 1))).SetLimit(int64(queryParams.Count)).SetSort(bson.M{"created_at": -1})
-
-	cursor, err := s.collection.Find(context.Background(), query, options)
+	transactions, err := s.Repo.Find(c.Context(), branch_id, queryParams)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Error finding transactions")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-	defer cursor.Close(context.Background())
-
-	transactions := []models.Transaction{}
-	err = cursor.All(context.Background(), &transactions)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Error decoding transactions")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		return models.RespondRepoError(c, err)
 	}
 	s.logger.Info().Int("count", len(transactions)).Msg("Successfully retrieved transactions")
 	return c.JSON(models.NewOutput(transactions))
@@ -153,14 +101,10 @@ func (s *TransactionsController) GetTransactionsByQueryParams(c *fiber.Ctx) erro
 func (t *TransactionsController) GetTransactionByID(c *fiber.Ctx) error {
 	t.logger.Info().Msg("GetTransactionByID called")
 	transaction_id := c.Params("id")
-	transaction := models.Transaction{}
-	err := t.collection.FindOne(context.Background(), bson.M{"_id": transaction_id}).Decode(&transaction)
+	transaction, err := t.Repo.GetByID(c.Context(), transaction_id)
 	if err != nil {
 		t.logger.Error().Err(err).Str("transaction_id", transaction_id).Msg("Error finding transaction by ID")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		return models.RespondRepoError(c, err)
 	}
 	t.logger.Info().Str("transaction_id", transaction_id).Msg("Successfully retrieved transaction")
 	return c.JSON(models.NewOutput(transaction))
@@ -187,29 +131,9 @@ func (t *TransactionsController) UpdateTransactionByID(c *fiber.Ctx) error {
 	description := c.Query("description", "")
 	typeOfTransaction := c.Query("type", "")
 
-	query := bson.M{
-		"_id": idx,
-	}
-	set := bson.M{
-		"$set": bson.M{},
-	}
-	if amount != "" {
-		set["$set"].(bson.M)["amount"] = amount
-	}
-	if description != "" {
-		set["$set"].(bson.M)["description"] = description
-	}
-	if typeOfTransaction != "" {
-		set["$set"].(bson.M)["type"] = typeOfTransaction
-	}
-
-	_, err := t.collection.UpdateOne(context.Background(), query, set)
-	if err != nil {
+	if err := t.Repo.Update(c.Context(), idx, amount, description, typeOfTransaction); err != nil {
 		t.logger.Error().Err(err).Str("transaction_id", idx).Msg("Error updating transaction")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
+		return models.RespondRepoError(c, err)
 	}
 	t.logger.Info().Str("transaction_id", idx).Msg("Successfully updated transaction")
 	return c.JSON(models.NewOutput(fiber.Map{
@@ -230,25 +154,9 @@ func (t *TransactionsController) UpdateTransactionByID(c *fiber.Ctx) error {
 // @Router /api/v1/admin/transactions/{id} [delete]
 func (t *TransactionsController) DeleteTransactionByID(c *fiber.Ctx) error {
 	t.logger.Info().Msg("DeleteTransactionByID called")
-	panic("not implemented")
-	idx := c.Params("id")
-	query := bson.M{
-		"_id": idx,
-	}
-	_, err := t.collection.DeleteOne(context.Background(), query)
-	if err != nil {
-		t.logger.Error().Err(err).Str("transaction_id", idx).Msg("Error deleting transaction")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-	t.logger.Info().Str("transaction_id", idx).Msg("Successfully deleted transaction")
-	return c.JSON(models.NewOutput(
-		fiber.Map{
-			"message": "transaction was succesfully deleted",
-		}))
-
+	// Deleting a transaction must also reverse its balance effects; that path is
+	// not yet ported, so the endpoint stays a 501 (was an unimplemented panic).
+	return models.NotImplemented(c)
 }
 
 // GetInitiatorType godoc
@@ -311,14 +219,4 @@ func (t *TransactionsController) GetPaymentMethod(c *fiber.Ctx) error {
 		models.OnlineTransfer,
 	}
 	return c.JSON(models.NewOutput(methods))
-}
-
-func NewTransaction(ctx context.Context, transaction models.TransactionBase, initiatorType models.InitiatorType, branchID string, transactionsCollection *mongo.Collection) (string, error) {
-	trx := models.NewTransaction(&transaction, initiatorType, branchID)
-	_, err := transactionsCollection.InsertOne(ctx, trx)
-	if err != nil {
-		return "", err
-	}
-	return trx.ID, nil
-
 }

@@ -6,7 +6,7 @@ import (
 	orderrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/order"
 	reviewrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/review"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles writing and managing product reviews. Public review
@@ -19,7 +19,7 @@ type Controller struct {
 	Orders    *orderrepo.OrderRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Reviews:   reviewrepo.New(db),
 		Customers: customerrepo.New(db),
