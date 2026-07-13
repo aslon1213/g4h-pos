@@ -304,45 +304,11 @@ func (r *JournalsRepository) ReOpen(ctx context.Context, journalID string) (*mod
 // both arms, preserving the original invariant.
 func (r *JournalsRepository) AddOperation(ctx context.Context, journalID string, input models.JournalOperationInput) (*models.Journal, error) {
 	var result *models.Journal
-
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		journal, err := r.fetchByID(ctx, tx, journalID, true)
+		journal, err := r.AddOperationTx(ctx, tx, journalID, input)
 		if err != nil {
 			return err
 		}
-
-		var operation *models.Transaction
-		if !input.SupplierTransaction {
-			input.TransactionBase.Type = models.TransactionTypeCredit
-			operation, err = ledger.ApplySalesTransaction(ctx, tx, input.TransactionBase, journal.Branch.ID)
-			if err != nil {
-				return err
-			}
-		} else {
-			input.TransactionBase.Type = models.TransactionTypeCredit
-			if input.SupplierID == "" {
-				return repoerr.ErrInvalidInput
-			}
-			operation, err = ledger.ApplySupplierTransaction(ctx, tx, input.TransactionBase, input.SupplierID, journal.Branch.ID)
-			if err != nil {
-				return err
-			}
-		}
-
-		// attach the new transaction to the journal (replaces the Mongo $push)
-		if _, err := gorm.G[models.Transaction](tx).
-			Where("id = ?", operation.ID).
-			Update(ctx, "journal_id", journalID); err != nil {
-			return err
-		}
-
-		// roll the operation amount up onto the journal total
-		res := tx.Table("journals").Where("id = ?", journalID).
-			Update("total", gorm.Expr("total + ?", input.Amount))
-		if res.Error != nil {
-			return res.Error
-		}
-
 		result = journal
 		return nil
 	})
@@ -350,6 +316,54 @@ func (r *JournalsRepository) AddOperation(ctx context.Context, journalID string,
 		return nil, err
 	}
 	return result, nil
+}
+
+// AddOperationTx is AddOperation's body run against an existing transaction
+// handle, so a caller (e.g. the Scan & Go handoff checkout) can record a sale
+// operation and its own writes in the SAME gorm transaction — mirroring how the
+// ledger primitives take a tx. It records the operation, links it to the journal
+// and rolls its amount onto the journal total, and returns the journal fetched
+// at the start. No new accounting logic: the behavior is identical to the
+// original single-transaction AddOperation.
+func (r *JournalsRepository) AddOperationTx(ctx context.Context, tx *gorm.DB, journalID string, input models.JournalOperationInput) (*models.Journal, error) {
+	journal, err := r.fetchByID(ctx, tx, journalID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	var operation *models.Transaction
+	if !input.SupplierTransaction {
+		input.TransactionBase.Type = models.TransactionTypeCredit
+		operation, err = ledger.ApplySalesTransaction(ctx, tx, input.TransactionBase, journal.Branch.ID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		input.TransactionBase.Type = models.TransactionTypeCredit
+		if input.SupplierID == "" {
+			return nil, repoerr.ErrInvalidInput
+		}
+		operation, err = ledger.ApplySupplierTransaction(ctx, tx, input.TransactionBase, input.SupplierID, journal.Branch.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// attach the new transaction to the journal (replaces the Mongo $push)
+	if _, err := gorm.G[models.Transaction](tx).
+		Where("id = ?", operation.ID).
+		Update(ctx, "journal_id", journalID); err != nil {
+		return nil, err
+	}
+
+	// roll the operation amount up onto the journal total
+	res := tx.Table("journals").Where("id = ?", journalID).
+		Update("total", gorm.Expr("total + ?", input.Amount))
+	if res.Error != nil {
+		return nil, res.Error
+	}
+
+	return journal, nil
 }
 
 // UpdateOperation edits the amount (and optionally description) of an operation

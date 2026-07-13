@@ -47,13 +47,15 @@ const (
 	ActivityTypeCreateBrand       ActivityType = "create_brand"
 	ActivityTypeEditBrand         ActivityType = "edit_brand"
 	ActivityTypeDeleteBrand       ActivityType = "delete_brand"
+	ActivityTypeHandoffClaim      ActivityType = "handoff_claim"
+	ActivityTypeHandoffCheckout   ActivityType = "handoff_checkout"
 )
 
 type Activity struct {
 	ID     uint            `gorm:"primaryKey"`
 	UserID string          `gorm:"column:user_id"`
 	Action ActivityType    `gorm:"column:action"`
-	Data   json.RawMessage `gorm:"column:data;type:json"`
+	Data   json.RawMessage `gorm:"column:data;type:json" swaggertype:"object"`
 	IP     string          `gorm:"column:ip"`
 	Date   time.Time       `gorm:"column:date"`
 	Status int             `gorm:"column:status"`

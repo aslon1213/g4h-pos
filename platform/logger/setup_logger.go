@@ -236,6 +236,12 @@ func SetupLogger() *zerolog.Logger {
 	logger := zerolog.New(multi).With().Timestamp().Caller().Logger()
 
 	log.Logger = logger
+	// Make log.Ctx(ctx) usable everywhere: without this, a context that carries no
+	// logger falls through to zerolog's disabled (no-op) logger and silently drops
+	// every log.Ctx(ctx)... line (e.g. the per-request logs in the repositories).
+	// DefaultContextLogger is the fallback zerolog.Ctx returns when the context has
+	// none, so those calls now write through the configured logger.
+	zerolog.DefaultContextLogger = &logger
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
 		if strings.Contains(file, "fiberzerolog") {
 			return ""

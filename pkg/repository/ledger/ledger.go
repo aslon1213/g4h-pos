@@ -30,6 +30,20 @@ import (
 //
 // Returns repoerr.ErrNotFound if the supplier does not exist.
 func ApplySupplierTransaction(ctx context.Context, tx *gorm.DB, base models.TransactionBase, supplierID, branchID string) (*models.Transaction, error) {
+	// A supplier transaction must reference an existing supplier. Validate up front
+	// so a missing/empty supplier_id returns a clean sentinel instead of a raw
+	// foreign-key error (transactions.supplier_id references suppliers.id).
+	if supplierID == "" {
+		return nil, repoerr.ErrInvalidInput
+	}
+	var supplierExists int64
+	if err := tx.WithContext(ctx).Table("suppliers").Where("id = ?", supplierID).Count(&supplierExists).Error; err != nil {
+		return nil, err
+	}
+	if supplierExists == 0 {
+		return nil, repoerr.ErrNotFound
+	}
+
 	transaction := models.NewTransaction(&base, models.InitiatorTypeSupplier, branchID)
 	sid := supplierID
 	transaction.SupplierID = &sid

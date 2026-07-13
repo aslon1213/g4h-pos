@@ -126,7 +126,8 @@ func NewProduct(productBase *ProductBase) *Product {
 
 // ProductQueryParams defines the available search parameters for products
 type ProductQueryParams struct {
-	Name     string  `query:"name"`      // Filter by name
+	Name     string  `query:"name"` // Filter by name
+	ID       string  `query:"name"`
 	BranchID string  `query:"branch_id"` // Filter by branch
 	Category string  `query:"category"`  // Filter by category
 	SKU      string  `query:"sku"`       // Filter by SKU

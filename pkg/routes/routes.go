@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/configs"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/analytics"
@@ -14,6 +15,7 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers/bnpl"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/finance"
+	handoffcart "github.com/aslon1213/g4h_pos_erp/pkg/controllers/handOffCart"
 	journal_handlers "github.com/aslon1213/g4h_pos_erp/pkg/controllers/journals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/products"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/sales"
@@ -24,6 +26,7 @@ import (
 	pasetoware "github.com/gofiber/contrib/paseto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/basicauth"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/rs/zerolog/log"
 )
 
@@ -92,7 +95,6 @@ func SalesRoutes(router *fiber.App, salesController *sales.SalesTransactionsCont
 
 func ProductsRoutes(router *fiber.App, productsController *products.ProductsController, middleware *middleware.Middlewares) {
 	api := router.Group("/api/v1/admin")
-
 	api.Post("/products", productsController.CreateProduct)                        // create product -- activity logged here if succesfull
 	api.Put("/products/:id", productsController.EditProduct)                       // edit product -- activity logged here if succesfull
 	api.Delete("/products/:id", productsController.DeleteProduct)                  // delete product -- activity logged here if succesfull
@@ -142,6 +144,41 @@ func JournalsRoutes(router *fiber.App, journalsController *journal_handlers.Jour
 
 func InternalExpensesRoutes(router *fiber.App, middleware *middleware.Middlewares) {
 
+}
+
+// HandOffCartCustomerRoutes registers the customer Scan & Go surface. These are
+// authenticated by the entry-QR SESSION TOKEN (X-Handoff-Session), not PASETO,
+// so — like StorePublicRoutes — this MUST be called before the /api staff guard
+// is mounted in SetupRoutes, or the routes would inherit that guard.
+func HandOffCartCustomerRoutes(router *fiber.App, ctrl *handoffcart.HandOffCartControllers, mw *middleware.Middlewares) {
+	// Cart creation is rate-limited per client (the entry point from the QR).
+	router.Post("/api/v1/handoff/sessions",
+		limiter.New(limiter.Config{Max: 20, Expiration: time.Minute}),
+		ctrl.StartSession)
+
+	// Everything else is gated by the session token.
+	cart := router.Group("/api/v1/handoff/cart", ctrl.SessionAuthMiddleware)
+	cart.Get("/", ctrl.GetCart)
+	cart.Post("/lines", ctrl.AddLine)
+	cart.Put("/lines/:line_id", ctrl.UpdateLine)
+	cart.Delete("/lines/:line_id", ctrl.RemoveLine)
+	cart.Post("/request-handoff", ctrl.RequestHandoff)
+	cart.Post("/cancel", ctrl.CancelSession)
+}
+
+// HandOffCartSellerRoutes registers the seller Scan & Go surface under the staff
+// /api guard. Each endpoint is gated by a branch-scoped capability; the claim
+// endpoint is additionally rate-limited to blunt brute-force of the typed code.
+func HandOffCartSellerRoutes(router *fiber.App, ctrl *handoffcart.HandOffCartControllers, mw *middleware.Middlewares) {
+	api := router.Group("/api/v1/admin/handoff")
+	api.Post("/claim",
+		limiter.New(limiter.Config{Max: 10, Expiration: time.Minute}),
+		mw.RequireCapability(middleware.CapHandoffClaim),
+		ctrl.Claim)
+	api.Get("/carts/:id", mw.RequireCapability(middleware.CapHandoffClaim), ctrl.SellerGetCart)
+	api.Post("/carts/:id/checkout", mw.RequireCapability(middleware.CapHandoffCheckout), ctrl.Checkout)
+	api.Post("/carts/:id/release", mw.RequireCapability(middleware.CapHandoffCheckout), ctrl.Release)
+	api.Post("/carts/:id/cancel", mw.RequireCapability(middleware.CapHandoffCheckout), ctrl.Cancel)
 }
 
 func FinanceRoutes(router *fiber.App, financeController *finance.FinanceController, middleware *middleware.Middlewares) {
@@ -196,6 +233,15 @@ func ProposalsRoutes(router *fiber.App, proposalsController *arrivals.ProposalsH
 	api.Post("/proposals/image", proposalsController.UploadImage)         // upload image
 	api.Get("/proposals/pdf/pdf", proposalsController.GeneratePDF)        // generate pdf
 	api.Get("/proposals/fulfill", proposalsController.FulfillProposals)   // fulfill proposals
+}
+
+func CartHandoffFeatureRouterrouter(router *fiber.App, proposalsController *arrivals.ProposalsHandlers, middleware *middleware.Middlewares) {
+	adminApi := router.Group("/api/v1/admin/hand_off_carts")
+	customerApi := router.Group("/api/v1/customer/hand_off_carts")
+
+	customerApi.Post("/")   // create a session --- short lived -- maximum 1 day
+	customerApi.Put("/:id") // update cart
+	adminApi.Get("/:id")    // get hand off cart using ID
 }
 
 func ForwardProxy(c *fiber.Ctx) error {

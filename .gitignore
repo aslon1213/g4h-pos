@@ -50,3 +50,5 @@ tmp
 notebooks/
 .DS_Store
 scripts/restore_journals.js
+.venv/
+__pycache__

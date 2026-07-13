@@ -144,7 +144,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-array_middleware_Activity"
+                            "$ref": "#/definitions/models.Output-array_activities_repo_Activity"
                         }
                     },
                     "500": {
@@ -175,7 +175,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-array_middleware_Activity"
+                            "$ref": "#/definitions/models.Output-array_activities_repo_Activity"
                         }
                     },
                     "500": {
@@ -1534,6 +1534,263 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/handoff/carts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Get a handoff cart at the seller's branch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/handoff/carts/{id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Cancel a claimed cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/handoff/carts/{id}/checkout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Requires the handoff.checkout capability and an Idempotency-Key header. Records the sale on the seller's OPEN shift journal at the cart's branch.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Charge a claimed cart (delegates to the sale flow)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Open journal + payment method",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CheckoutHandoffInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/handoff/carts/{id}/release": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Release a claimed cart back to ready_for_handoff",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/handoff/claim": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Idempotent. The handoff token alone identifies the cart. Requires the handoff.claim capability.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Claim a cart by its handoff token (freezes customer edits)",
+                "parameters": [
+                    {
+                        "description": "Handoff QR ref or 8-digit code",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ClaimHandoffInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -3835,6 +4092,346 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/handoff/cart": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Get the current handoff cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/handoff/cart/cancel": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Cancel the current handoff cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/handoff/cart/lines": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Add a scanned product line to the cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Product + quantity",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddHandoffLineInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/handoff/cart/lines/{line_id}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Update a cart line's quantity (0 removes it)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Line ID",
+                        "name": "line_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New quantity",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateHandoffLineInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Remove a line from the cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Line ID",
+                        "name": "line_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/handoff/cart/request-handoff": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Request checkout — mint a handoff token (QR + 8-digit code)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_RequestHandoffResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/handoff/sessions": {
+            "post": {
+                "description": "Creates a server-side cart and returns its one-time session token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Start a Scan \u0026 Go session (scoped to the entry-QR branch)",
+                "parameters": [
+                    {
+                        "description": "Branch from the entry QR",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.StartHandoffSessionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_StartHandoffSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/store/account/addresses": {
             "get": {
                 "security": [
@@ -5588,6 +6185,111 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "activities_repo.Activity": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "$ref": "#/definitions/activities_repo.ActivityType"
+                },
+                "data": {
+                    "type": "object"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "userID": {
+                    "type": "string"
+                }
+            }
+        },
+        "activities_repo.ActivityType": {
+            "type": "string",
+            "enum": [
+                "login_success",
+                "login_failed",
+                "logout_success",
+                "logout_failed",
+                "register_success",
+                "register_failed",
+                "create_transaction",
+                "create_journal",
+                "close_journal",
+                "create_supplier",
+                "create_product",
+                "edit_transaction",
+                "edit_supplier",
+                "edit_product",
+                "delete_transaction",
+                "reopen_journal",
+                "delete_supplier",
+                "delete_product",
+                "close_sales_session",
+                "open_sales_session",
+                "product_income",
+                "product_transfer",
+                "create_operation",
+                "edit_operation",
+                "delete_operation",
+                "create_finance",
+                "edit_finance",
+                "delete_finance",
+                "create_category",
+                "edit_category",
+                "delete_category",
+                "create_brand",
+                "edit_brand",
+                "delete_brand",
+                "handoff_claim",
+                "handoff_checkout"
+            ],
+            "x-enum-varnames": [
+                "ActivityTypeLogin",
+                "ActivityTypeLoginFailed",
+                "ActivityTypeLogout",
+                "ActivityTypeLogoutFailed",
+                "ActivityTypeRegister",
+                "ActivityTypeRegisterFailed",
+                "ActivityTypeCreateTransaction",
+                "ActivityTypeCreateJournal",
+                "ActivityTypeCloseJournal",
+                "ActivityTypeCreateSupplier",
+                "ActivityTypeCreateProduct",
+                "ActivityTypeEditTransaction",
+                "ActivityTypeEditSupplier",
+                "ActivityTypeEditProduct",
+                "ActivityTypeDeleteTransaction",
+                "ActivityTypeReopenJournal",
+                "ActivityTypeDeleteSupplier",
+                "ActivityTypeDeleteProduct",
+                "ActivityTypeCloseSalesSession",
+                "ActivityTypeOpenSalesSession",
+                "ActivityTypeProductIncome",
+                "ActivityTypeProductTransfer",
+                "ActivityTypeCreateOperation",
+                "ActivityTypeEditOperation",
+                "ActivityTypeDeleteOperation",
+                "ActivityTypeCreateFinance",
+                "ActivityTypeEditFinance",
+                "ActivityTypeDeleteFinance",
+                "ActivityTypeCreateCategory",
+                "ActivityTypeEditCategory",
+                "ActivityTypeDeleteCategory",
+                "ActivityTypeCreateBrand",
+                "ActivityTypeEditBrand",
+                "ActivityTypeDeleteBrand",
+                "ActivityTypeHandoffClaim",
+                "ActivityTypeHandoffCheckout"
+            ]
+        },
         "arrivals.EditProposalRequest": {
             "type": "object",
             "properties": {
@@ -5628,101 +6330,16 @@ const docTemplate = `{
                 }
             }
         },
-        "middleware.Activity": {
+        "models.AddHandoffLineInput": {
             "type": "object",
             "properties": {
-                "action": {
-                    "$ref": "#/definitions/middleware.ActivityType"
-                },
-                "data": {},
-                "date": {
+                "product_id": {
                     "type": "string"
                 },
-                "ip": {
-                    "type": "string"
-                },
-                "status": {
+                "quantity": {
                     "type": "integer"
-                },
-                "userID": {
-                    "type": "string"
                 }
             }
-        },
-        "middleware.ActivityType": {
-            "type": "string",
-            "enum": [
-                "login_success",
-                "login_failed",
-                "logout_success",
-                "logout_failed",
-                "register_success",
-                "register_failed",
-                "create_transaction",
-                "create_journal",
-                "close_journal",
-                "create_supplier",
-                "create_product",
-                "edit_transaction",
-                "edit_supplier",
-                "edit_product",
-                "delete_transaction",
-                "reopen_journal",
-                "delete_supplier",
-                "delete_product",
-                "close_sales_session",
-                "open_sales_session",
-                "product_income",
-                "product_transfer",
-                "create_operation",
-                "edit_operation",
-                "delete_operation",
-                "create_finance",
-                "edit_finance",
-                "delete_finance",
-                "create_category",
-                "edit_category",
-                "delete_category",
-                "create_brand",
-                "edit_brand",
-                "delete_brand"
-            ],
-            "x-enum-varnames": [
-                "ActivityTypeLogin",
-                "ActivityTypeLoginFailed",
-                "ActivityTypeLogout",
-                "ActivityTypeLogoutFailed",
-                "ActivityTypeRegister",
-                "ActivityTypeRegisterFailed",
-                "ActivityTypeCreateTransaction",
-                "ActivityTypeCreateJournal",
-                "ActivityTypeCloseJournal",
-                "ActivityTypeCreateSupplier",
-                "ActivityTypeCreateProduct",
-                "ActivityTypeEditTransaction",
-                "ActivityTypeEditSupplier",
-                "ActivityTypeEditProduct",
-                "ActivityTypeDeleteTransaction",
-                "ActivityTypeReopenJournal",
-                "ActivityTypeDeleteSupplier",
-                "ActivityTypeDeleteProduct",
-                "ActivityTypeCloseSalesSession",
-                "ActivityTypeOpenSalesSession",
-                "ActivityTypeProductIncome",
-                "ActivityTypeProductTransfer",
-                "ActivityTypeCreateOperation",
-                "ActivityTypeEditOperation",
-                "ActivityTypeDeleteOperation",
-                "ActivityTypeCreateFinance",
-                "ActivityTypeEditFinance",
-                "ActivityTypeDeleteFinance",
-                "ActivityTypeCreateCategory",
-                "ActivityTypeEditCategory",
-                "ActivityTypeDeleteCategory",
-                "ActivityTypeCreateBrand",
-                "ActivityTypeEditBrand",
-                "ActivityTypeDeleteBrand"
-            ]
         },
         "models.Address": {
             "type": "object",
@@ -5731,6 +6348,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "country": {
+                    "type": "string"
+                },
+                "customer_id": {
                     "type": "string"
                 },
                 "full_name": {
@@ -6001,6 +6621,31 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CheckoutHandoffInput": {
+            "type": "object",
+            "properties": {
+                "journal_id": {
+                    "type": "string"
+                },
+                "payment_method": {
+                    "$ref": "#/definitions/models.PaymentMethod"
+                }
+            }
+        },
+        "models.ClaimHandoffInput": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "ref": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CloseJournalEntryInput": {
             "type": "object",
             "properties": {
@@ -6173,6 +6818,99 @@ const docTemplate = `{
                 }
             }
         },
+        "models.HandoffCart": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "claimed_at": {
+                    "type": "string"
+                },
+                "claimed_by": {
+                    "description": "claim / checkout bookkeeping.",
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "finalized_at": {
+                    "type": "string"
+                },
+                "handoff_expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.HandoffCartLine"
+                    }
+                },
+                "sale_journal_id": {
+                    "type": "string"
+                },
+                "session_expires_at": {
+                    "type": "string"
+                },
+                "state": {
+                    "$ref": "#/definitions/models.HandoffState"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.HandoffCartLine": {
+            "type": "object",
+            "properties": {
+                "display_price": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "line_total": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "sku": {
+                    "type": "string"
+                },
+                "uom": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.HandoffState": {
+            "type": "string",
+            "enum": [
+                "active",
+                "ready_for_handoff",
+                "claimed",
+                "completed",
+                "expired",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "HandoffActive",
+                "HandoffReadyForHandoff",
+                "HandoffClaimed",
+                "HandoffCompleted",
+                "HandoffExpired",
+                "HandoffCancelled"
+            ]
+        },
         "models.IncomeHistory": {
             "type": "object",
             "properties": {
@@ -6277,7 +7015,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "type": {
-                    "$ref": "#/definitions/models.TransactionType"
+                    "description": "Type here is the credit/debit direction. In Mongo it collided on the bson\nkey \"type\" with Transaction.Type (initiator) and was effectively dropped;\nin Postgres it has its own column ` + "`" + `transaction_type` + "`" + `.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.TransactionType"
+                        }
+                    ]
                 }
             }
         },
@@ -6400,13 +7143,13 @@ const docTemplate = `{
                 }
             }
         },
-        "models.Output-array_middleware_Activity": {
+        "models.Output-array_activities_repo_Activity": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/middleware.Activity"
+                        "$ref": "#/definitions/activities_repo.Activity"
                     }
                 },
                 "error": {
@@ -6643,6 +7386,20 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Output-models_HandoffCart": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.HandoffCart"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
         "models.Output-models_Journal": {
             "type": "object",
             "properties": {
@@ -6727,11 +7484,39 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Output-models_RequestHandoffResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.RequestHandoffResponse"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
         "models.Output-models_Review": {
             "type": "object",
             "properties": {
                 "data": {
                     "$ref": "#/definitions/models.Review"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_StartHandoffSessionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.StartHandoffSessionResponse"
                 },
                 "error": {
                     "type": "array",
@@ -7092,6 +7877,23 @@ const docTemplate = `{
                 }
             }
         },
+        "models.RequestHandoffResponse": {
+            "type": "object",
+            "properties": {
+                "cart": {
+                    "$ref": "#/definitions/models.HandoffCart"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "qr_ref": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Review": {
             "type": "object",
             "properties": {
@@ -7160,6 +7962,25 @@ const docTemplate = `{
                 }
             }
         },
+        "models.StartHandoffSessionInput": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.StartHandoffSessionResponse": {
+            "type": "object",
+            "properties": {
+                "cart": {
+                    "$ref": "#/definitions/models.HandoffCart"
+                },
+                "session_token": {
+                    "type": "string"
+                }
+            }
+        },
         "models.StoreCustomer": {
             "type": "object",
             "properties": {
@@ -7199,6 +8020,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "branch": {
+                    "description": "holds a branch id (FK)",
                     "type": "string"
                 },
                 "created_at": {
@@ -7237,6 +8059,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "branch": {
+                    "description": "holds a branch id (FK)",
                     "type": "string"
                 },
                 "email": {
@@ -7315,6 +8138,9 @@ const docTemplate = `{
                 "amount": {
                     "type": "integer"
                 },
+                "bnpl_id": {
+                    "type": "string"
+                },
                 "branch_id": {
                     "type": "string"
                 },
@@ -7327,11 +8153,23 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "journal_id": {
+                    "description": "Relational foreign keys (Postgres only; not persisted in Mongo). They\nreplace journals.operations[], the embedded supplier transactions, and\nbnpl.transactions[].",
+                    "type": "string"
+                },
                 "payment_method": {
                     "$ref": "#/definitions/models.PaymentMethod"
                 },
+                "supplier_id": {
+                    "type": "string"
+                },
                 "type": {
-                    "$ref": "#/definitions/models.InitiatorType"
+                    "description": "Type here is the initiator (sale/supplier/bnpl/...). Stored in ` + "`" + `initiator_type` + "`" + `.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.InitiatorType"
+                        }
+                    ]
                 },
                 "updated_at": {
                     "type": "string"
@@ -7351,7 +8189,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.PaymentMethod"
                 },
                 "type": {
-                    "$ref": "#/definitions/models.TransactionType"
+                    "description": "Type here is the credit/debit direction. In Mongo it collided on the bson\nkey \"type\" with Transaction.Type (initiator) and was effectively dropped;\nin Postgres it has its own column ` + "`" + `transaction_type` + "`" + `.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.TransactionType"
+                        }
+                    ]
                 }
             }
         },
@@ -7401,6 +8244,14 @@ const docTemplate = `{
                 "TransactionTypeDebit"
             ]
         },
+        "models.UpdateHandoffLineInput": {
+            "type": "object",
+            "properties": {
+                "quantity": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.UpdateProfileInput": {
             "type": "object",
             "properties": {
@@ -7442,12 +8293,27 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
-                    "type": "string"
+                    "$ref": "#/definitions/models.UserRole"
                 },
                 "username": {
                     "type": "string"
                 }
             }
+        },
+        "models.UserRole": {
+            "type": "string",
+            "enum": [
+                "admin",
+                "staff",
+                "manager",
+                "user"
+            ],
+            "x-enum-varnames": [
+                "UserRoleAdmin",
+                "UserRoleStaff",
+                "UserRoleManager",
+                "UserRoleUser"
+            ]
         },
         "models.VoteReviewInput": {
             "type": "object",

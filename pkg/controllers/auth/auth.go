@@ -244,7 +244,7 @@ func (a *AuthControllers) Register(c *fiber.Ctx) error {
 // @Description Get the 25 most recent activities across all users
 // @Tags auth
 // @Produce json
-// @Success 200 {object} models.Output[[]a.ActivitiesRepo.Activity]
+// @Success 200 {object} models.Output[[]activities_repo.Activity]
 // @Failure 500 {object} models.ErrorOutput "Internal Server Error"
 // @Router /api/v1/admin/activities/recent [get]
 func (a *AuthControllers) GetRecentActivities(c *fiber.Ctx) error {
@@ -267,7 +267,7 @@ func (a *AuthControllers) GetRecentActivities(c *fiber.Ctx) error {
 // @Description Get the 25 most recent activities for the authenticated user
 // @Tags auth
 // @Produce json
-// @Success 200 {object} models.Output[[]a.ActivitiesRepo.Activity]
+// @Success 200 {object} models.Output[[]activities_repo.Activity]
 // @Failure 500 {object} models.ErrorOutput "Internal Server Error"
 // @Router /api/v1/admin/activities/me [get]
 func (a *AuthControllers) GetActivitesOfUser(c *fiber.Ctx) error {

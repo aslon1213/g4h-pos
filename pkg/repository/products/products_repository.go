@@ -50,41 +50,81 @@ func New(db *gorm.DB) *ProductsRepository {
 	return &ProductsRepository{db: db}
 }
 
-// Query returns products matching the params. Filters preserve the controller's
-// original semantics: case-insensitive name match, branch-scoped stock, sku, and
-// price min/max evaluated against the per-place stock price. As under Mongo, the
-// price and branch filters match a product if ANY of its stock rows satisfies the
-// condition (each condition independently, no cross-row correlation).
+// Query returns products matching the params. All filters are combined using AND;
+// optional parameters are collected and applied in one go rather than chaining one by one.
 func (r *ProductsRepository) Query(ctx context.Context, params models.ProductQueryParams) ([]models.Product, error) {
-	// Dynamic optional filters are expressed with classic gorm: the generics
-	// builder's Where returns a ChainInterface that can't be reassigned back to
-	// the seed Interface, so conditional composition is cleaner this way.
+	log := log.Ctx(ctx).With().
+		Str("method", "ProductsRepository.Query").
+		Interface("params", params).
+		Logger()
+
+	log.Info().Msg("Building product query")
+
 	query := r.db.WithContext(ctx).Model(&models.Product{})
+
+	// To accumulate WHERE clauses and parameters
+	var wheres []string
+	var args []interface{}
+
+	if params.ID != "" {
+		log.Info().Str("id", params.ID).Msg("Adding ID filter")
+		wheres = append(wheres, "id = ?")
+		args = append(args, params.ID)
+	}
 	if params.Name != "" {
-		query = query.Where("name ILIKE ?", "%"+params.Name+"%")
+		log.Info().Str("name", params.Name).Msg("Adding Name filter")
+		wheres = append(wheres, "name ILIKE ?")
+		args = append(args, "%"+params.Name+"%")
 	}
 	if params.BranchID != "" {
-		query = query.Where("EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id AND ps.place_id = ?)", params.BranchID)
+		log.Info().Str("branch_id", params.BranchID).Msg("Adding BranchID filter")
+		wheres = append(wheres, "EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id AND ps.place_id = ?)")
+		args = append(args, params.BranchID)
 	}
 	if params.SKU != "" {
-		query = query.Where("sku = ?", params.SKU)
+		log.Info().Str("sku", params.SKU).Msg("Adding SKU filter")
+		wheres = append(wheres, "sku = ?")
+		args = append(args, params.SKU)
 	}
 	if params.PriceMin != 0 {
-		query = query.Where("EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id AND ps.price >= ?)", params.PriceMin)
+		log.Info().Float64("pricemin", params.PriceMin).Msg("Adding PriceMin filter")
+		wheres = append(wheres, "EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id AND ps.price >= ?)")
+		args = append(args, params.PriceMin)
 	}
 	if params.PriceMax != 0 {
-		query = query.Where("EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id AND ps.price <= ?)", params.PriceMax)
+		log.Info().Float64("pricemax", params.PriceMax).Msg("Adding PriceMax filter")
+		wheres = append(wheres, "EXISTS (SELECT 1 FROM product_stock ps WHERE ps.product_id = products.id AND ps.price <= ?)")
+		args = append(args, params.PriceMax)
+	}
+
+	// Compose the full WHERE clause using AND for all filters
+	if len(wheres) > 0 {
+		whereClause := "(" + wheres[0]
+		for i := 1; i < len(wheres); i++ {
+			whereClause += " AND " + wheres[i]
+		}
+		whereClause += ")"
+		query = query.Where(whereClause, args...)
 	}
 
 	products := []models.Product{}
 	if err := query.Find(&products).Error; err != nil {
+		log.Error().Err(err).Msg("Query failed")
 		return nil, err
 	}
+	log.Info().Int("num_products", len(products)).Msg("Products found from query")
+
 	for i := range products {
 		if err := r.attachChildren(ctx, r.db, &products[i]); err != nil {
+			log.Error().
+				Str("product_id", products[i].ID).
+				Err(err).
+				Msg("Failed to attach children to product")
 			return nil, err
 		}
 	}
+
+	log.Info().Msg("Successfully fetched and attached children to products")
 	return products, nil
 }
 
@@ -327,18 +367,22 @@ func (r *ProductsRepository) AddIncome(ctx context.Context, productID string, in
 		}
 
 		// Apply the supplier debit (branch is the upload place id, mirroring the
-		// original Mongo call).
-		transactionBase := models.TransactionBase{
-			Amount:        uint32(input.Price * input.Quantity),
-			Description:   "Income from " + input.SupplierID,
-			Type:          models.TransactionTypeDebit,
-			PaymentMethod: models.PaymentMethodUndefined,
+		// original Mongo call) — but only when the income actually names a supplier.
+		// Supplier-less income just adds stock; there is no supplier to owe, so no
+		// supplier transaction is recorded (and no supplier_id FK to satisfy).
+		if input.SupplierID != "" {
+			transactionBase := models.TransactionBase{
+				Amount:        uint32(input.Price * input.Quantity),
+				Description:   "Income from " + input.SupplierID,
+				Type:          models.TransactionTypeDebit,
+				PaymentMethod: models.PaymentMethodUndefined,
+			}
+			supplierTransaction, err := ledger.ApplySupplierTransaction(ctx, tx, transactionBase, input.SupplierID, input.UploadedTo.ID)
+			if err != nil {
+				return err
+			}
+			log.Debug().Interface("supplier_transaction", supplierTransaction).Msg("Supplier transaction created")
 		}
-		supplierTransaction, err := ledger.ApplySupplierTransaction(ctx, tx, transactionBase, input.SupplierID, input.UploadedTo.ID)
-		if err != nil {
-			return err
-		}
-		log.Debug().Interface("supplier_transaction", supplierTransaction).Msg("Supplier transaction created")
 		return nil
 	})
 	if err != nil {

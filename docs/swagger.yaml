@@ -1,37 +1,14 @@
 definitions:
-  arrivals.EditProposalRequest:
-    properties:
-      branch:
-        type: string
-      fulfilled:
-        type: boolean
-      name:
-        type: string
-    type: object
-  auth.LoginInput:
-    properties:
-      password:
-        type: string
-      username:
-        type: string
-    required:
-    - password
-    - username
-    type: object
-  auth.RefreshInput:
-    properties:
-      refresh_token:
-        type: string
-    required:
-    - refresh_token
-    type: object
-  middleware.Activity:
+  activities_repo.Activity:
     properties:
       action:
-        $ref: '#/definitions/middleware.ActivityType'
-      data: {}
+        $ref: '#/definitions/activities_repo.ActivityType'
+      data:
+        type: object
       date:
         type: string
+      id:
+        type: integer
       ip:
         type: string
       status:
@@ -39,7 +16,7 @@ definitions:
       userID:
         type: string
     type: object
-  middleware.ActivityType:
+  activities_repo.ActivityType:
     enum:
     - login_success
     - login_failed
@@ -75,6 +52,8 @@ definitions:
     - create_brand
     - edit_brand
     - delete_brand
+    - handoff_claim
+    - handoff_checkout
     type: string
     x-enum-varnames:
     - ActivityTypeLogin
@@ -111,11 +90,48 @@ definitions:
     - ActivityTypeCreateBrand
     - ActivityTypeEditBrand
     - ActivityTypeDeleteBrand
+    - ActivityTypeHandoffClaim
+    - ActivityTypeHandoffCheckout
+  arrivals.EditProposalRequest:
+    properties:
+      branch:
+        type: string
+      fulfilled:
+        type: boolean
+      name:
+        type: string
+    type: object
+  auth.LoginInput:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  auth.RefreshInput:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  models.AddHandoffLineInput:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: integer
+    type: object
   models.Address:
     properties:
       city:
         type: string
       country:
+        type: string
+      customer_id:
         type: string
       full_name:
         type: string
@@ -294,6 +310,22 @@ definitions:
       sort_order:
         type: integer
     type: object
+  models.CheckoutHandoffInput:
+    properties:
+      journal_id:
+        type: string
+      payment_method:
+        $ref: '#/definitions/models.PaymentMethod'
+    type: object
+  models.ClaimHandoffInput:
+    properties:
+      branch_id:
+        type: string
+      code:
+        type: string
+      ref:
+        type: string
+    type: object
   models.CloseJournalEntryInput:
     properties:
       cash_left:
@@ -408,6 +440,71 @@ definitions:
           $ref: '#/definitions/models.Transaction'
         type: array
     type: object
+  models.HandoffCart:
+    properties:
+      branch_id:
+        type: string
+      claimed_at:
+        type: string
+      claimed_by:
+        description: claim / checkout bookkeeping.
+        type: string
+      created_at:
+        type: string
+      finalized_at:
+        type: string
+      handoff_expires_at:
+        type: string
+      id:
+        type: string
+      lines:
+        items:
+          $ref: '#/definitions/models.HandoffCartLine'
+        type: array
+      sale_journal_id:
+        type: string
+      session_expires_at:
+        type: string
+      state:
+        $ref: '#/definitions/models.HandoffState'
+      updated_at:
+        type: string
+    type: object
+  models.HandoffCartLine:
+    properties:
+      display_price:
+        type: integer
+      id:
+        type: string
+      line_total:
+        type: integer
+      name:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: integer
+      sku:
+        type: string
+      uom:
+        type: string
+    type: object
+  models.HandoffState:
+    enum:
+    - active
+    - ready_for_handoff
+    - claimed
+    - completed
+    - expired
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - HandoffActive
+    - HandoffReadyForHandoff
+    - HandoffClaimed
+    - HandoffCompleted
+    - HandoffExpired
+    - HandoffCancelled
   models.IncomeHistory:
     properties:
       date:
@@ -481,7 +578,12 @@ definitions:
       supplier_transaction:
         type: boolean
       type:
-        $ref: '#/definitions/models.TransactionType'
+        allOf:
+        - $ref: '#/definitions/models.TransactionType'
+        description: |-
+          Type here is the credit/debit direction. In Mongo it collided on the bson
+          key "type" with Transaction.Type (initiator) and was effectively dropped;
+          in Postgres it has its own column `transaction_type`.
     type: object
   models.JournalWithTransactionID:
     properties:
@@ -562,11 +664,11 @@ definitions:
       date:
         type: string
     type: object
-  models.Output-array_middleware_Activity:
+  models.Output-array_activities_repo_Activity:
     properties:
       data:
         items:
-          $ref: '#/definitions/middleware.Activity'
+          $ref: '#/definitions/activities_repo.Activity'
         type: array
       error:
         items:
@@ -719,6 +821,15 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-models_HandoffCart:
+    properties:
+      data:
+        $ref: '#/definitions/models.HandoffCart'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-models_Journal:
     properties:
       data:
@@ -773,10 +884,28 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-models_RequestHandoffResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.RequestHandoffResponse'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-models_Review:
     properties:
       data:
         $ref: '#/definitions/models.Review'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_StartHandoffSessionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.StartHandoffSessionResponse'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -1023,6 +1152,17 @@ definitions:
       phone:
         type: string
     type: object
+  models.RequestHandoffResponse:
+    properties:
+      cart:
+        $ref: '#/definitions/models.HandoffCart'
+      code:
+        type: string
+      expires_at:
+        type: string
+      qr_ref:
+        type: string
+    type: object
   models.Review:
     properties:
       body:
@@ -1068,6 +1208,18 @@ definitions:
       quantity:
         type: integer
     type: object
+  models.StartHandoffSessionInput:
+    properties:
+      branch_id:
+        type: string
+    type: object
+  models.StartHandoffSessionResponse:
+    properties:
+      cart:
+        $ref: '#/definitions/models.HandoffCart'
+      session_token:
+        type: string
+    type: object
   models.StoreCustomer:
     properties:
       addresses:
@@ -1094,6 +1246,7 @@ definitions:
       address:
         type: string
       branch:
+        description: holds a branch id (FK)
         type: string
       created_at:
         type: string
@@ -1119,6 +1272,7 @@ definitions:
       address:
         type: string
       branch:
+        description: holds a branch id (FK)
         type: string
       email:
         type: string
@@ -1171,6 +1325,8 @@ definitions:
     properties:
       amount:
         type: integer
+      bnpl_id:
+        type: string
       branch_id:
         type: string
       created_at:
@@ -1179,10 +1335,21 @@ definitions:
         type: string
       id:
         type: string
+      journal_id:
+        description: |-
+          Relational foreign keys (Postgres only; not persisted in Mongo). They
+          replace journals.operations[], the embedded supplier transactions, and
+          bnpl.transactions[].
+        type: string
       payment_method:
         $ref: '#/definitions/models.PaymentMethod'
+      supplier_id:
+        type: string
       type:
-        $ref: '#/definitions/models.InitiatorType'
+        allOf:
+        - $ref: '#/definitions/models.InitiatorType'
+        description: Type here is the initiator (sale/supplier/bnpl/...). Stored in
+          `initiator_type`.
       updated_at:
         type: string
     type: object
@@ -1195,7 +1362,12 @@ definitions:
       payment_method:
         $ref: '#/definitions/models.PaymentMethod'
       type:
-        $ref: '#/definitions/models.TransactionType'
+        allOf:
+        - $ref: '#/definitions/models.TransactionType'
+        description: |-
+          Type here is the credit/debit direction. In Mongo it collided on the bson
+          key "type" with Transaction.Type (initiator) and was effectively dropped;
+          in Postgres it has its own column `transaction_type`.
     type: object
   models.TransactionOutput:
     properties:
@@ -1230,6 +1402,11 @@ definitions:
     x-enum-varnames:
     - TransactionTypeCredit
     - TransactionTypeDebit
+  models.UpdateHandoffLineInput:
+    properties:
+      quantity:
+        type: integer
+    type: object
   models.UpdateProfileInput:
     properties:
       name:
@@ -1257,10 +1434,22 @@ definitions:
       phone:
         type: string
       role:
-        type: string
+        $ref: '#/definitions/models.UserRole'
       username:
         type: string
     type: object
+  models.UserRole:
+    enum:
+    - admin
+    - staff
+    - manager
+    - user
+    type: string
+    x-enum-varnames:
+    - UserRoleAdmin
+    - UserRoleStaff
+    - UserRoleManager
+    - UserRoleUser
   models.VoteReviewInput:
     properties:
       helpful:
@@ -1373,7 +1562,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-array_middleware_Activity'
+            $ref: '#/definitions/models.Output-array_activities_repo_Activity'
         "500":
           description: Internal Server Error
           schema:
@@ -1392,7 +1581,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-array_middleware_Activity'
+            $ref: '#/definitions/models.Output-array_activities_repo_Activity'
         "500":
           description: Internal Server Error
           schema:
@@ -2261,6 +2450,171 @@ paths:
       summary: Fetch finance by ID
       tags:
       - finance
+  /api/v1/admin/handoff/carts/{id}:
+    get:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a handoff cart at the seller's branch
+      tags:
+      - handoff
+  /api/v1/admin/handoff/carts/{id}/cancel:
+    post:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Cancel a claimed cart
+      tags:
+      - handoff
+  /api/v1/admin/handoff/carts/{id}/checkout:
+    post:
+      consumes:
+      - application/json
+      description: Requires the handoff.checkout capability and an Idempotency-Key
+        header. Records the sale on the seller's OPEN shift journal at the cart's
+        branch.
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Idempotency key
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Open journal + payment method
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckoutHandoffInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Charge a claimed cart (delegates to the sale flow)
+      tags:
+      - handoff
+  /api/v1/admin/handoff/carts/{id}/release:
+    post:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Release a claimed cart back to ready_for_handoff
+      tags:
+      - handoff
+  /api/v1/admin/handoff/claim:
+    post:
+      consumes:
+      - application/json
+      description: Idempotent. The handoff token alone identifies the cart. Requires
+        the handoff.claim capability.
+      parameters:
+      - description: Handoff QR ref or 8-digit code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ClaimHandoffInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Claim a cart by its handoff token (freezes customer edits)
+      tags:
+      - handoff
   /api/v1/admin/journals:
     post:
       consumes:
@@ -3722,6 +4076,229 @@ paths:
       summary: Get all transaction types
       tags:
       - transactions
+  /api/v1/handoff/cart:
+    get:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get the current handoff cart
+      tags:
+      - handoff
+  /api/v1/handoff/cart/cancel:
+    post:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Cancel the current handoff cart
+      tags:
+      - handoff
+  /api/v1/handoff/cart/lines:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      - description: Product + quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddHandoffLineInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Add a scanned product line to the cart
+      tags:
+      - handoff
+  /api/v1/handoff/cart/lines/{line_id}:
+    delete:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      - description: Line ID
+        in: path
+        name: line_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Remove a line from the cart
+      tags:
+      - handoff
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      - description: Line ID
+        in: path
+        name: line_id
+        required: true
+        type: string
+      - description: New quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateHandoffLineInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_HandoffCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Update a cart line's quantity (0 removes it)
+      tags:
+      - handoff
+  /api/v1/handoff/cart/request-handoff:
+    post:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_RequestHandoffResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Request checkout — mint a handoff token (QR + 8-digit code)
+      tags:
+      - handoff
+  /api/v1/handoff/sessions:
+    post:
+      consumes:
+      - application/json
+      description: Creates a server-side cart and returns its one-time session token.
+      parameters:
+      - description: Branch from the entry QR
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.StartHandoffSessionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_StartHandoffSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Start a Scan & Go session (scoped to the entry-QR branch)
+      tags:
+      - handoff
   /api/v1/store/account/addresses:
     get:
       produces:

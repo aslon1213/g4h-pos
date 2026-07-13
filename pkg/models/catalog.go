@@ -64,6 +64,8 @@ type BranchAvailability struct {
 type ProductListParams struct {
 	Query    string  `query:"q"`
 	Category string  `query:"category"`
+	SKU      string  `query:"sku"`
+	BranchID string  `query:"branch_id"`
 	Brand    string  `query:"brand"`
 	PriceMin float64 `query:"price_min"`
 	PriceMax float64 `query:"price_max"`
