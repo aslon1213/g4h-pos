@@ -8,8 +8,10 @@ import (
 
 // ProductQuantityInfo represents the quantity and unit of measurement for a product
 type ProductQuantityInfo struct {
-	Quantity int32  `json:"quantity" bson:"quantity" gorm:"column:quantity"` // Quantity of the product
-	Unit     string `json:"unit" bson:"unit" gorm:"column:unit"`             // Unit of measurement (e.g. kg, pieces, etc)
+	// Fractional (product_stock.quantity is numeric(12,3)): weighted goods are
+	// stocked and sold by the kilogram, so a sale can decrement 1.5 of a unit.
+	Quantity float64 `json:"quantity" bson:"quantity" gorm:"column:quantity"` // Quantity of the product
+	Unit     string  `json:"unit" bson:"unit" gorm:"column:unit"`             // Unit of measurement (e.g. kg, pieces, etc)
 }
 
 // ProductPlaceType defines where products can be stored
@@ -58,7 +60,7 @@ type IncomeHistory struct {
 	ProductID  string       `json:"-" bson:"-" gorm:"column:product_id"`
 	Date       string       `json:"date" bson:"date" gorm:"column:date"`                                  // Date of the income
 	Price      int32        `json:"price" bson:"price" gorm:"column:price"`                               // Price of the product that was uploaded
-	Quantity   int32        `json:"quantity" bson:"quantity" gorm:"column:quantity"`                      // Quantity of the product that was uploaded
+	Quantity   float64      `json:"quantity" bson:"quantity" gorm:"column:quantity"`                      // Quantity of the product that was uploaded (fractional: numeric(12,3))
 	UploadedTo ProductPlace `json:"uploaded_to" bson:"uploaded_to" gorm:"embedded;embeddedPrefix:place_"` // Place where the product was uploaded to
 	SupplierID string       `json:"supplier_id" bson:"supplier_id" gorm:"column:supplier_id"`             // Supplier ID
 }

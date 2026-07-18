@@ -91,9 +91,43 @@ type Transaction struct {
 	JournalID  *string `json:"journal_id,omitempty" bson:"-" gorm:"column:journal_id"`
 	SupplierID *string `json:"supplier_id,omitempty" bson:"-" gorm:"column:supplier_id"`
 	BNPLID     *string `json:"bnpl_id,omitempty" bson:"-" gorm:"column:bnpl_id"`
+	// CartID is the type-specific reference for initiator_type='sale': the
+	// sale_carts row whose items produced this transaction. It is NULL for a
+	// keyed/manual sale (an amount typed straight into a journal or the sales
+	// endpoint), which has no items to point at — so a null cart on a sale is
+	// expected, not a broken link.
+	CartID *string `json:"cart_id,omitempty" bson:"-" gorm:"column:cart_id"`
+
+	// ItemCount is how many cart lines sit behind this transaction. It is NOT a
+	// column — the journals repository fills it in one batched query when it
+	// loads a journal's operations, so a staff list can show "12 items" without
+	// expanding every cart. Zero for any transaction with no cart.
+	//
+	// Clients decide whether a drill-in is available from CartID being non-null,
+	// not from this count (a cart could legitimately be empty).
+	ItemCount int `json:"item_count" bson:"-" gorm:"-"`
 }
 
 func (Transaction) TableName() string { return "transactions" }
+
+// TransactionDetails is the type-specific payload behind a transaction: the
+// thing staff actually want to see when they open one. It is a discriminated
+// union keyed by Kind — exactly one of the pointers is set, and all of them are
+// nil for a type that has no detail record of its own (salary, rent, utilities,
+// other), where the description is the whole story.
+type TransactionDetails struct {
+	Kind     InitiatorType `json:"kind"`
+	Cart     *SaleCart     `json:"cart,omitempty"`
+	Supplier *Supplier     `json:"supplier,omitempty"`
+	BNPL     *BNPL         `json:"bnpl,omitempty"`
+}
+
+// TransactionWithDetails is a transaction plus its resolved type-specific
+// detail, as returned by GET /api/v1/admin/transactions/{id}/details.
+type TransactionWithDetails struct {
+	Transaction
+	Details TransactionDetails `json:"details"`
+}
 
 func NewTransaction(transactionBase *TransactionBase, typeOfTransaction InitiatorType, branchID string) *Transaction {
 	loc := utils.GetTimeZone()

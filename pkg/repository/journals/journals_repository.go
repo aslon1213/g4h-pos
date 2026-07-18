@@ -21,9 +21,11 @@ import (
 	"time"
 
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/inventory"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/ledger"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/aslon1213/g4h_pos_erp/pkg/utils"
+	"github.com/rs/zerolog/log"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -79,7 +81,50 @@ func (r *JournalsRepository) loadOperations(ctx context.Context, db *gorm.DB, jo
 	if err != nil {
 		return nil, err
 	}
+	r.attachItemCounts(ctx, db, ops)
 	return ops, nil
+}
+
+// attachItemCounts fills in ItemCount for the cart-backed operations, so a
+// journal listing can show how many lines are behind each sale without the
+// caller expanding every cart.
+//
+// It is ONE grouped query for the whole journal, not one per operation — a shift
+// can carry hundreds of sales, and a per-row count would turn opening a journal
+// into an N+1. Best-effort: a failure here leaves the counts at zero rather than
+// failing the journal read, since the count is decoration and the money is not.
+func (r *JournalsRepository) attachItemCounts(ctx context.Context, db *gorm.DB, ops []models.Transaction) {
+	cartIDs := make([]string, 0, len(ops))
+	for i := range ops {
+		if ops[i].CartID != nil && *ops[i].CartID != "" {
+			cartIDs = append(cartIDs, *ops[i].CartID)
+		}
+	}
+	if len(cartIDs) == 0 {
+		return
+	}
+
+	var rows []struct {
+		CartID string
+		N      int
+	}
+	if err := db.WithContext(ctx).Table("sale_cart_items").
+		Select("cart_id, COUNT(*) AS n").
+		Where("cart_id IN ?", cartIDs).
+		Group("cart_id").Scan(&rows).Error; err != nil {
+		log.Error().Err(err).Msg("journal operations: failed to count cart items")
+		return
+	}
+
+	counts := make(map[string]int, len(rows))
+	for _, row := range rows {
+		counts[row.CartID] = row.N
+	}
+	for i := range ops {
+		if ops[i].CartID != nil {
+			ops[i].ItemCount = counts[*ops[i].CartID]
+		}
+	}
 }
 
 // Query returns journals matching the query params, with pagination, branch
@@ -202,11 +247,13 @@ func (r *JournalsRepository) Close(ctx context.Context, journalID string, input 
 			Type:          models.TransactionTypeCredit,
 		}
 
-		terminalTx, err := ledger.ApplySalesTransaction(ctx, tx, terminalBase, branchID)
+		// Shift-close totals are aggregates over the whole day, not the product of
+		// any single cart, so they carry no cart link.
+		terminalTx, err := ledger.ApplySalesTransaction(ctx, tx, terminalBase, branchID, "")
 		if err != nil {
 			return err
 		}
-		cashTx, err := ledger.ApplySalesTransaction(ctx, tx, cashBase, branchID)
+		cashTx, err := ledger.ApplySalesTransaction(ctx, tx, cashBase, branchID, "")
 		if err != nil {
 			return err
 		}
@@ -334,7 +381,7 @@ func (r *JournalsRepository) AddOperationTx(ctx context.Context, tx *gorm.DB, jo
 	var operation *models.Transaction
 	if !input.SupplierTransaction {
 		input.TransactionBase.Type = models.TransactionTypeCredit
-		operation, err = ledger.ApplySalesTransaction(ctx, tx, input.TransactionBase, journal.Branch.ID)
+		operation, err = ledger.ApplySalesTransaction(ctx, tx, input.TransactionBase, journal.Branch.ID, input.CartID)
 		if err != nil {
 			return nil, err
 		}
@@ -441,6 +488,13 @@ func (r *JournalsRepository) DeleteOperation(ctx context.Context, journal *model
 		for _, operation := range journal.Operations {
 			if operation.ID != operationID {
 				continue
+			}
+
+			// Put back the stock a cart-backed sale consumed, before the row (and
+			// with it the cart link) is deleted. A keyed operation has no cart and
+			// is a no-op here.
+			if err := inventory.RestoreForSale(ctx, tx, &operation); err != nil {
+				return err
 			}
 
 			// delete the transaction row (removes it from the journal's operations)

@@ -372,7 +372,10 @@ func (r *ProductsRepository) AddIncome(ctx context.Context, productID string, in
 		// supplier transaction is recorded (and no supplier_id FK to satisfy).
 		if input.SupplierID != "" {
 			transactionBase := models.TransactionBase{
-				Amount:        uint32(input.Price * input.Quantity),
+				// Quantity is fractional, money is whole so'm — round through the
+				// same helper the cart lines use, so every price*quantity in the
+				// system rounds identically.
+				Amount:        models.RoundLineTotal(input.Quantity, uint32(input.Price)),
 				Description:   "Income from " + input.SupplierID,
 				Type:          models.TransactionTypeDebit,
 				PaymentMethod: models.PaymentMethodUndefined,

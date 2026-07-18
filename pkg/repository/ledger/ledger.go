@@ -16,6 +16,7 @@ import (
 	"errors"
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/inventory"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -109,13 +110,22 @@ func ApplySupplierTransaction(ctx context.Context, tx *gorm.DB, base models.Tran
 // increments the branch's matching balance bucket. The type is forced to credit
 // and the payment method validated. Returns repoerr.ErrNotFound when the branch
 // finance row does not exist.
-func ApplySalesTransaction(ctx context.Context, tx *gorm.DB, base models.TransactionBase, branchID string) (*models.Transaction, error) {
+//
+// cartID links the sale to the sale_carts row whose items produced it, so staff
+// can open the transaction and see what was sold. Pass "" for a keyed/manual
+// sale that has no cart — the column stays NULL, which is a valid state for a
+// sale transaction (see models.Transaction.CartID).
+func ApplySalesTransaction(ctx context.Context, tx *gorm.DB, base models.TransactionBase, branchID, cartID string) (*models.Transaction, error) {
 	base.Type = models.TransactionTypeCredit
 	if err := models.ValidatePaymentMethod(base.PaymentMethod); err != nil {
 		return nil, err
 	}
 
 	transaction := models.NewTransaction(&base, models.InitiatorTypeSales, branchID)
+	if cartID != "" {
+		cid := cartID
+		transaction.CartID = &cid
+	}
 	if err := gorm.G[models.Transaction](tx).Create(ctx, transaction); err != nil {
 		return nil, err
 	}
@@ -137,6 +147,12 @@ func DeleteSalesTransaction(ctx context.Context, tx *gorm.DB, transactionID stri
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+
+	// Put the stock back BEFORE the row goes away — the cart link lives on the
+	// transaction, so once it is deleted there is no way to find what was sold.
+	if err := inventory.RestoreForSale(ctx, tx, &transaction); err != nil {
 		return nil, err
 	}
 

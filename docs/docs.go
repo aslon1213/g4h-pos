@@ -1554,7 +1554,7 @@ const docTemplate = `{
                 "tags": [
                     "handoff"
                 ],
-                "summary": "Get a handoff cart at the seller's branch",
+                "summary": "Get a cart (handoff or POS) by id",
                 "parameters": [
                     {
                         "type": "string",
@@ -1568,7 +1568,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "404": {
@@ -1593,7 +1593,7 @@ const docTemplate = `{
                 "tags": [
                     "handoff"
                 ],
-                "summary": "Cancel a claimed cart",
+                "summary": "Cancel a cart (claimed handoff cart, or the seller's own POS cart)",
                 "parameters": [
                     {
                         "type": "string",
@@ -1607,7 +1607,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "404": {
@@ -1632,7 +1632,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Requires the handoff.checkout capability and an Idempotency-Key header. Records the sale on the seller's OPEN shift journal at the cart's branch.",
+                "description": "Requires the handoff.checkout capability and an Idempotency-Key header. Records the sale on the seller's OPEN shift journal at the cart's branch, then decrements branch stock by each line's quantity. A handoff cart must be claimed by the caller; a POS cart must be theirs and still active. Replaying the same idempotency key returns the completed cart without charging or decrementing again.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1642,7 +1642,7 @@ const docTemplate = `{
                 "tags": [
                     "handoff"
                 ],
-                "summary": "Charge a claimed cart (delegates to the sale flow)",
+                "summary": "Charge a cart (delegates to the sale flow and decrements stock)",
                 "parameters": [
                     {
                         "type": "string",
@@ -1664,7 +1664,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.CheckoutHandoffInput"
+                            "$ref": "#/definitions/models.CheckoutCartInput"
                         }
                     }
                 ],
@@ -1672,7 +1672,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "400": {
@@ -1723,7 +1723,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "404": {
@@ -1774,7 +1774,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "400": {
@@ -2301,6 +2301,313 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/pos/carts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pos"
+                ],
+                "summary": "List the seller's open till carts",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-array_models_SaleCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the old Redis-backed sales session: the cart is a durable row, so a till recovers its basket after a reload or restart. Branch defaults to the authenticated seller's branch.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pos"
+                ],
+                "summary": "Open a till cart at the seller's branch",
+                "parameters": [
+                    {
+                        "description": "Optional branch override",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/models.OpenPOSCartInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/pos/carts/{id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pos"
+                ],
+                "summary": "Abandon a till cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/pos/carts/{id}/items": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Quantity is fractional, so weighed goods can be sold by the kilogram.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pos"
+                ],
+                "summary": "Add a scanned line to a till cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Product + quantity",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddSaleCartItemInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/pos/carts/{id}/items/{item_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pos"
+                ],
+                "summary": "Update a till cart line's quantity (0 removes it)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New quantity",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateSaleCartItemInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pos"
+                ],
+                "summary": "Remove a line from a till cart",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cart ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -4049,6 +4356,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/transactions/{id}/details": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the transaction plus a discriminated ` + "`" + `details` + "`" + ` object resolved from its initiator type: the cart and its items for a sale, the supplier for a supplier transaction, the BNPL record for a BNPL one. Types with no detail record of their own (salary, rent, utilities, other) return ` + "`" + `details` + "`" + ` with only ` + "`" + `kind` + "`" + ` set — as does a sale that has no cart, such as a keyed amount. Switch on ` + "`" + `details.kind` + "`" + ` in the client.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Get a transaction with its type-specific details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Transaction ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Output-models_TransactionWithDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/transactions/{transaction_id}": {
             "get": {
                 "security": [
@@ -4114,7 +4461,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "401": {
@@ -4154,7 +4501,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "404": {
@@ -4172,8 +4519,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/handoff/cart/lines": {
+        "/api/v1/handoff/cart/items": {
             "post": {
+                "description": "Quantity is fractional, so weighed goods can be sold by the kilogram.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4198,7 +4546,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.AddHandoffLineInput"
+                            "$ref": "#/definitions/models.AddSaleCartItemInput"
                         }
                     }
                 ],
@@ -4206,7 +4554,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "400": {
@@ -4230,7 +4578,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/handoff/cart/lines/{line_id}": {
+        "/api/v1/handoff/cart/items/{item_id}": {
             "put": {
                 "consumes": [
                     "application/json"
@@ -4252,8 +4600,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Line ID",
-                        "name": "line_id",
+                        "description": "Item ID",
+                        "name": "item_id",
                         "in": "path",
                         "required": true
                     },
@@ -4263,7 +4611,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.UpdateHandoffLineInput"
+                            "$ref": "#/definitions/models.UpdateSaleCartItemInput"
                         }
                     }
                 ],
@@ -4271,7 +4619,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "400": {
@@ -4312,8 +4660,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Line ID",
-                        "name": "line_id",
+                        "description": "Item ID",
+                        "name": "item_id",
                         "in": "path",
                         "required": true
                     }
@@ -4322,7 +4670,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Output-models_HandoffCart"
+                            "$ref": "#/definitions/models.Output-models_SaleCart"
                         }
                     },
                     "404": {
@@ -4379,6 +4727,44 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/handoff/cart/session": {
+            "delete": {
+                "description": "Hard-deletes the cart identified by the session token, cascading its items and its handoff session row. The session token dies with the row, so the X-Handoff-Session header the client cached stops resolving immediately — clients MUST drop it from their local store on a 204. Unlike /cart/cancel (which keeps the cart in a cancelled state), nothing is retained. A token that is unknown or already deleted is 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "handoff"
+                ],
+                "summary": "Delete the current handoff session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session token",
+                        "name": "X-Handoff-Session",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Session deleted; discard the cached session header"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorOutput"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorOutput"
                         }
@@ -6330,14 +6716,14 @@ const docTemplate = `{
                 }
             }
         },
-        "models.AddHandoffLineInput": {
+        "models.AddSaleCartItemInput": {
             "type": "object",
             "properties": {
                 "product_id": {
                     "type": "string"
                 },
                 "quantity": {
-                    "type": "integer"
+                    "type": "number"
                 }
             }
         },
@@ -6559,6 +6945,36 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CartKind": {
+            "type": "string",
+            "enum": [
+                "handoff",
+                "pos"
+            ],
+            "x-enum-varnames": [
+                "CartKindHandoff",
+                "CartKindPOS"
+            ]
+        },
+        "models.CartState": {
+            "type": "string",
+            "enum": [
+                "active",
+                "ready_for_handoff",
+                "claimed",
+                "completed",
+                "expired",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "CartActive",
+                "CartReadyForHandoff",
+                "CartClaimed",
+                "CartCompleted",
+                "CartExpired",
+                "CartCancelled"
+            ]
+        },
         "models.Category": {
             "type": "object",
             "properties": {
@@ -6621,7 +7037,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.CheckoutHandoffInput": {
+        "models.CheckoutCartInput": {
             "type": "object",
             "properties": {
                 "journal_id": {
@@ -6818,98 +7234,19 @@ const docTemplate = `{
                 }
             }
         },
-        "models.HandoffCart": {
+        "models.HandoffSession": {
             "type": "object",
             "properties": {
-                "branch_id": {
-                    "type": "string"
-                },
                 "claimed_at": {
-                    "type": "string"
-                },
-                "claimed_by": {
-                    "description": "claim / checkout bookkeeping.",
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "finalized_at": {
                     "type": "string"
                 },
                 "handoff_expires_at": {
                     "type": "string"
                 },
-                "id": {
-                    "type": "string"
-                },
-                "lines": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.HandoffCartLine"
-                    }
-                },
-                "sale_journal_id": {
-                    "type": "string"
-                },
                 "session_expires_at": {
                     "type": "string"
-                },
-                "state": {
-                    "$ref": "#/definitions/models.HandoffState"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
-        },
-        "models.HandoffCartLine": {
-            "type": "object",
-            "properties": {
-                "display_price": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "line_total": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "product_id": {
-                    "type": "string"
-                },
-                "quantity": {
-                    "type": "integer"
-                },
-                "sku": {
-                    "type": "string"
-                },
-                "uom": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.HandoffState": {
-            "type": "string",
-            "enum": [
-                "active",
-                "ready_for_handoff",
-                "claimed",
-                "completed",
-                "expired",
-                "cancelled"
-            ],
-            "x-enum-varnames": [
-                "HandoffActive",
-                "HandoffReadyForHandoff",
-                "HandoffClaimed",
-                "HandoffCompleted",
-                "HandoffExpired",
-                "HandoffCancelled"
-            ]
         },
         "models.IncomeHistory": {
             "type": "object",
@@ -6923,8 +7260,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "quantity": {
-                    "description": "Quantity of the product that was uploaded",
-                    "type": "integer"
+                    "description": "Quantity of the product that was uploaded (fractional: numeric(12,3))",
+                    "type": "number"
                 },
                 "supplier_id": {
                     "description": "Supplier ID",
@@ -7001,6 +7338,10 @@ const docTemplate = `{
             "properties": {
                 "amount": {
                     "type": "integer"
+                },
+                "cart_id": {
+                    "description": "CartID links a sale operation back to the sale_carts row that produced it,\nso staff can open the operation and see the items. Set by the cart checkout\nflow only: a keyed/manual sale has no cart and leaves this empty.",
+                    "type": "string"
                 },
                 "description": {
                     "type": "string"
@@ -7139,6 +7480,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "date": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.OpenPOSCartInput": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
                     "type": "string"
                 }
             }
@@ -7296,6 +7645,23 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Output-array_models_SaleCart": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SaleCart"
+                    }
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
         "models.Output-array_models_Supplier": {
             "type": "object",
             "properties": {
@@ -7377,20 +7743,6 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/models.Category"
-                },
-                "error": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.Error"
-                    }
-                }
-            }
-        },
-        "models.Output-models_HandoffCart": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/models.HandoffCart"
                 },
                 "error": {
                     "type": "array",
@@ -7512,6 +7864,20 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Output-models_SaleCart": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.SaleCart"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
         "models.Output-models_StartHandoffSessionResponse": {
             "type": "object",
             "properties": {
@@ -7559,6 +7925,20 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/models.Transaction"
+                },
+                "error": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Error"
+                    }
+                }
+            }
+        },
+        "models.Output-models_TransactionWithDetails": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.TransactionWithDetails"
                 },
                 "error": {
                     "type": "array",
@@ -7796,8 +8176,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "quantity": {
-                    "description": "Quantity of the product",
-                    "type": "integer"
+                    "description": "Fractional (product_stock.quantity is numeric(12,3)): weighted goods are\nstocked and sold by the kilogram, so a sale can decrement 1.5 of a unit.",
+                    "type": "number"
                 },
                 "unit": {
                     "description": "Unit of measurement (e.g. kg, pieces, etc)",
@@ -7881,7 +8261,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "cart": {
-                    "$ref": "#/definitions/models.HandoffCart"
+                    "$ref": "#/definitions/models.SaleCart"
                 },
                 "code": {
                     "type": "string"
@@ -7930,6 +8310,85 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SaleCart": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "finalized_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SaleCartItem"
+                    }
+                },
+                "kind": {
+                    "$ref": "#/definitions/models.CartKind"
+                },
+                "sale_journal_id": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "description": "POS: the staff user who opened the cart. Handoff: the seller who claimed it.",
+                    "type": "string"
+                },
+                "session": {
+                    "description": "Session is the handoff satellite, attached only for Kind == CartKindHandoff.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.HandoffSession"
+                        }
+                    ]
+                },
+                "state": {
+                    "$ref": "#/definitions/models.CartState"
+                },
+                "subtotal": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SaleCartItem": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "line_total": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "number"
+                },
+                "sku": {
+                    "type": "string"
+                },
+                "unit_price": {
+                    "type": "integer"
+                },
+                "uom": {
+                    "type": "string"
+                }
+            }
+        },
         "models.SalesSession": {
             "type": "object",
             "properties": {
@@ -7974,7 +8433,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "cart": {
-                    "$ref": "#/definitions/models.HandoffCart"
+                    "$ref": "#/definitions/models.SaleCart"
                 },
                 "session_token": {
                     "type": "string"
@@ -8144,6 +8603,10 @@ const docTemplate = `{
                 "branch_id": {
                     "type": "string"
                 },
+                "cart_id": {
+                    "description": "CartID is the type-specific reference for initiator_type='sale': the\nsale_carts row whose items produced this transaction. It is NULL for a\nkeyed/manual sale (an amount typed straight into a journal or the sales\nendpoint), which has no items to point at — so a null cart on a sale is\nexpected, not a broken link.",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -8152,6 +8615,10 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "item_count": {
+                    "description": "ItemCount is how many cart lines sit behind this transaction. It is NOT a\ncolumn — the journals repository fills it in one batched query when it\nloads a journal's operations, so a staff list can show \"12 items\" without\nexpanding every cart. Zero for any transaction with no cart.\n\nClients decide whether a drill-in is available from CartID being non-null,\nnot from this count (a cart could legitimately be empty).",
+                    "type": "integer"
                 },
                 "journal_id": {
                     "description": "Relational foreign keys (Postgres only; not persisted in Mongo). They\nreplace journals.operations[], the embedded supplier transactions, and\nbnpl.transactions[].",
@@ -8195,6 +8662,23 @@ const docTemplate = `{
                             "$ref": "#/definitions/models.TransactionType"
                         }
                     ]
+                }
+            }
+        },
+        "models.TransactionDetails": {
+            "type": "object",
+            "properties": {
+                "bnpl": {
+                    "$ref": "#/definitions/models.BNPL"
+                },
+                "cart": {
+                    "$ref": "#/definitions/models.SaleCart"
+                },
+                "kind": {
+                    "$ref": "#/definitions/models.InitiatorType"
+                },
+                "supplier": {
+                    "$ref": "#/definitions/models.Supplier"
                 }
             }
         },
@@ -8244,11 +8728,58 @@ const docTemplate = `{
                 "TransactionTypeDebit"
             ]
         },
-        "models.UpdateHandoffLineInput": {
+        "models.TransactionWithDetails": {
             "type": "object",
             "properties": {
-                "quantity": {
+                "amount": {
                     "type": "integer"
+                },
+                "bnpl_id": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "cart_id": {
+                    "description": "CartID is the type-specific reference for initiator_type='sale': the\nsale_carts row whose items produced this transaction. It is NULL for a\nkeyed/manual sale (an amount typed straight into a journal or the sales\nendpoint), which has no items to point at — so a null cart on a sale is\nexpected, not a broken link.",
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "details": {
+                    "$ref": "#/definitions/models.TransactionDetails"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "item_count": {
+                    "description": "ItemCount is how many cart lines sit behind this transaction. It is NOT a\ncolumn — the journals repository fills it in one batched query when it\nloads a journal's operations, so a staff list can show \"12 items\" without\nexpanding every cart. Zero for any transaction with no cart.\n\nClients decide whether a drill-in is available from CartID being non-null,\nnot from this count (a cart could legitimately be empty).",
+                    "type": "integer"
+                },
+                "journal_id": {
+                    "description": "Relational foreign keys (Postgres only; not persisted in Mongo). They\nreplace journals.operations[], the embedded supplier transactions, and\nbnpl.transactions[].",
+                    "type": "string"
+                },
+                "payment_method": {
+                    "$ref": "#/definitions/models.PaymentMethod"
+                },
+                "supplier_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "Type here is the initiator (sale/supplier/bnpl/...). Stored in ` + "`" + `initiator_type` + "`" + `.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.InitiatorType"
+                        }
+                    ]
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -8274,6 +8805,14 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "models.UpdateSaleCartItemInput": {
+            "type": "object",
+            "properties": {
+                "quantity": {
+                    "type": "number"
                 }
             }
         },
@@ -8335,8 +8874,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "quantity": {
-                    "description": "Quantity of the product that was uploaded",
-                    "type": "integer"
+                    "description": "Quantity of the product that was uploaded (fractional: numeric(12,3))",
+                    "type": "number"
                 },
                 "selling_price": {
                     "type": "integer"

@@ -41,7 +41,9 @@ func New(db *gorm.DB) *SalesRepository {
 func (r *SalesRepository) CreateTransaction(ctx context.Context, branchID string, base models.TransactionBase) (*models.Transaction, error) {
 	var transaction *models.Transaction
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		t, err := ledger.ApplySalesTransaction(ctx, tx, base, branchID)
+		// No cart: this endpoint records an amount typed by staff, with no item
+		// list behind it.
+		t, err := ledger.ApplySalesTransaction(ctx, tx, base, branchID, "")
 		if err != nil {
 			return err
 		}

@@ -453,8 +453,12 @@ func (m *Migrator) migrateProducts() error {
 				if err := tx.Exec(
 					`INSERT INTO product_stock (product_id, place_id, place_type, quantity, unit, price)
 					 VALUES (?, ?, ?, ?, ?, ?)`,
+					// quantity is numeric(12,3) since 00004 (weighted goods sell by
+					// the kilogram) — read it as a float so a fractional source value
+					// is not silently truncated on the way in. price stays integer
+					// so'm.
 					id, getStr(place, "id"), nullIfEmpty(getStr(place, "place_type")),
-					getInt(qd, "quantity"), nullIfEmpty(getStr(qd, "unit")), getInt(qd, "price"),
+					getFloat(qd, "quantity"), nullIfEmpty(getStr(qd, "unit")), getInt(qd, "price"),
 				).Error; err != nil {
 					return err
 				}
@@ -472,7 +476,8 @@ func (m *Migrator) migrateProducts() error {
 					`INSERT INTO product_income_history
 					 (product_id, date, price, quantity, place_id, place_type, supplier_id)
 					 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-					id, nullIfEmpty(getStr(hd, "date")), getInt(hd, "price"), getInt(hd, "quantity"),
+					// quantity is numeric(12,3) since 00004; see migrateProducts above.
+					id, nullIfEmpty(getStr(hd, "date")), getInt(hd, "price"), getFloat(hd, "quantity"),
 					nullIfEmpty(getStr(place, "id")), nullIfEmpty(getStr(place, "place_type")),
 					nullIfEmpty(getStr(hd, "supplier_id")),
 				).Error; err != nil {

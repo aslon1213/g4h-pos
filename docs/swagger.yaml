@@ -118,12 +118,12 @@ definitions:
     required:
     - refresh_token
     type: object
-  models.AddHandoffLineInput:
+  models.AddSaleCartItemInput:
     properties:
       product_id:
         type: string
       quantity:
-        type: integer
+        type: number
     type: object
   models.Address:
     properties:
@@ -269,6 +269,30 @@ definitions:
       slug:
         type: string
     type: object
+  models.CartKind:
+    enum:
+    - handoff
+    - pos
+    type: string
+    x-enum-varnames:
+    - CartKindHandoff
+    - CartKindPOS
+  models.CartState:
+    enum:
+    - active
+    - ready_for_handoff
+    - claimed
+    - completed
+    - expired
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - CartActive
+    - CartReadyForHandoff
+    - CartClaimed
+    - CartCompleted
+    - CartExpired
+    - CartCancelled
   models.Category:
     properties:
       created_at:
@@ -310,7 +334,7 @@ definitions:
       sort_order:
         type: integer
     type: object
-  models.CheckoutHandoffInput:
+  models.CheckoutCartInput:
     properties:
       journal_id:
         type: string
@@ -440,71 +464,15 @@ definitions:
           $ref: '#/definitions/models.Transaction'
         type: array
     type: object
-  models.HandoffCart:
+  models.HandoffSession:
     properties:
-      branch_id:
-        type: string
       claimed_at:
-        type: string
-      claimed_by:
-        description: claim / checkout bookkeeping.
-        type: string
-      created_at:
-        type: string
-      finalized_at:
         type: string
       handoff_expires_at:
         type: string
-      id:
-        type: string
-      lines:
-        items:
-          $ref: '#/definitions/models.HandoffCartLine'
-        type: array
-      sale_journal_id:
-        type: string
       session_expires_at:
         type: string
-      state:
-        $ref: '#/definitions/models.HandoffState'
-      updated_at:
-        type: string
     type: object
-  models.HandoffCartLine:
-    properties:
-      display_price:
-        type: integer
-      id:
-        type: string
-      line_total:
-        type: integer
-      name:
-        type: string
-      product_id:
-        type: string
-      quantity:
-        type: integer
-      sku:
-        type: string
-      uom:
-        type: string
-    type: object
-  models.HandoffState:
-    enum:
-    - active
-    - ready_for_handoff
-    - claimed
-    - completed
-    - expired
-    - cancelled
-    type: string
-    x-enum-varnames:
-    - HandoffActive
-    - HandoffReadyForHandoff
-    - HandoffClaimed
-    - HandoffCompleted
-    - HandoffExpired
-    - HandoffCancelled
   models.IncomeHistory:
     properties:
       date:
@@ -514,8 +482,8 @@ definitions:
         description: Price of the product that was uploaded
         type: integer
       quantity:
-        description: Quantity of the product that was uploaded
-        type: integer
+        description: 'Quantity of the product that was uploaded (fractional: numeric(12,3))'
+        type: number
       supplier_id:
         description: Supplier ID
         type: string
@@ -569,6 +537,12 @@ definitions:
     properties:
       amount:
         type: integer
+      cart_id:
+        description: |-
+          CartID links a sale operation back to the sale_carts row that produced it,
+          so staff can open the operation and see the items. Set by the cart checkout
+          flow only: a keyed/manual sale has no cart and leaves this empty.
+        type: string
       description:
         type: string
       payment_method:
@@ -662,6 +636,11 @@ definitions:
       branch_name_or_id:
         type: string
       date:
+        type: string
+    type: object
+  models.OpenPOSCartInput:
+    properties:
+      branch_id:
         type: string
     type: object
   models.Output-array_activities_repo_Activity:
@@ -763,6 +742,17 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-array_models_SaleCart:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.SaleCart'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-array_models_Supplier:
     properties:
       data:
@@ -816,15 +806,6 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/models.Category'
-      error:
-        items:
-          $ref: '#/definitions/models.Error'
-        type: array
-    type: object
-  models.Output-models_HandoffCart:
-    properties:
-      data:
-        $ref: '#/definitions/models.HandoffCart'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -902,6 +883,15 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-models_SaleCart:
+    properties:
+      data:
+        $ref: '#/definitions/models.SaleCart'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-models_StartHandoffSessionResponse:
     properties:
       data:
@@ -933,6 +923,15 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/models.Transaction'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_TransactionWithDetails:
+    properties:
+      data:
+        $ref: '#/definitions/models.TransactionWithDetails'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -1099,8 +1098,10 @@ definitions:
         description: Price of the product
         type: integer
       quantity:
-        description: Quantity of the product
-        type: integer
+        description: |-
+          Fractional (product_stock.quantity is numeric(12,3)): weighted goods are
+          stocked and sold by the kilogram, so a sale can decrement 1.5 of a unit.
+        type: number
       unit:
         description: Unit of measurement (e.g. kg, pieces, etc)
         type: string
@@ -1155,7 +1156,7 @@ definitions:
   models.RequestHandoffResponse:
     properties:
       cart:
-        $ref: '#/definitions/models.HandoffCart'
+        $ref: '#/definitions/models.SaleCart'
       code:
         type: string
       expires_at:
@@ -1187,6 +1188,58 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.SaleCart:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      finalized_at:
+        type: string
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/models.SaleCartItem'
+        type: array
+      kind:
+        $ref: '#/definitions/models.CartKind'
+      sale_journal_id:
+        type: string
+      seller_id:
+        description: 'POS: the staff user who opened the cart. Handoff: the seller
+          who claimed it.'
+        type: string
+      session:
+        allOf:
+        - $ref: '#/definitions/models.HandoffSession'
+        description: Session is the handoff satellite, attached only for Kind == CartKindHandoff.
+      state:
+        $ref: '#/definitions/models.CartState'
+      subtotal:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  models.SaleCartItem:
+    properties:
+      id:
+        type: string
+      line_total:
+        type: integer
+      name:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: number
+      sku:
+        type: string
+      unit_price:
+        type: integer
+      uom:
+        type: string
+    type: object
   models.SalesSession:
     properties:
       branch_id:
@@ -1216,7 +1269,7 @@ definitions:
   models.StartHandoffSessionResponse:
     properties:
       cart:
-        $ref: '#/definitions/models.HandoffCart'
+        $ref: '#/definitions/models.SaleCart'
       session_token:
         type: string
     type: object
@@ -1329,12 +1382,30 @@ definitions:
         type: string
       branch_id:
         type: string
+      cart_id:
+        description: |-
+          CartID is the type-specific reference for initiator_type='sale': the
+          sale_carts row whose items produced this transaction. It is NULL for a
+          keyed/manual sale (an amount typed straight into a journal or the sales
+          endpoint), which has no items to point at — so a null cart on a sale is
+          expected, not a broken link.
+        type: string
       created_at:
         type: string
       description:
         type: string
       id:
         type: string
+      item_count:
+        description: |-
+          ItemCount is how many cart lines sit behind this transaction. It is NOT a
+          column — the journals repository fills it in one batched query when it
+          loads a journal's operations, so a staff list can show "12 items" without
+          expanding every cart. Zero for any transaction with no cart.
+
+          Clients decide whether a drill-in is available from CartID being non-null,
+          not from this count (a cart could legitimately be empty).
+        type: integer
       journal_id:
         description: |-
           Relational foreign keys (Postgres only; not persisted in Mongo). They
@@ -1369,6 +1440,17 @@ definitions:
           key "type" with Transaction.Type (initiator) and was effectively dropped;
           in Postgres it has its own column `transaction_type`.
     type: object
+  models.TransactionDetails:
+    properties:
+      bnpl:
+        $ref: '#/definitions/models.BNPL'
+      cart:
+        $ref: '#/definitions/models.SaleCart'
+      kind:
+        $ref: '#/definitions/models.InitiatorType'
+      supplier:
+        $ref: '#/definitions/models.Supplier'
+    type: object
   models.TransactionOutput:
     properties:
       data:
@@ -1402,10 +1484,57 @@ definitions:
     x-enum-varnames:
     - TransactionTypeCredit
     - TransactionTypeDebit
-  models.UpdateHandoffLineInput:
+  models.TransactionWithDetails:
     properties:
-      quantity:
+      amount:
         type: integer
+      bnpl_id:
+        type: string
+      branch_id:
+        type: string
+      cart_id:
+        description: |-
+          CartID is the type-specific reference for initiator_type='sale': the
+          sale_carts row whose items produced this transaction. It is NULL for a
+          keyed/manual sale (an amount typed straight into a journal or the sales
+          endpoint), which has no items to point at — so a null cart on a sale is
+          expected, not a broken link.
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      details:
+        $ref: '#/definitions/models.TransactionDetails'
+      id:
+        type: string
+      item_count:
+        description: |-
+          ItemCount is how many cart lines sit behind this transaction. It is NOT a
+          column — the journals repository fills it in one batched query when it
+          loads a journal's operations, so a staff list can show "12 items" without
+          expanding every cart. Zero for any transaction with no cart.
+
+          Clients decide whether a drill-in is available from CartID being non-null,
+          not from this count (a cart could legitimately be empty).
+        type: integer
+      journal_id:
+        description: |-
+          Relational foreign keys (Postgres only; not persisted in Mongo). They
+          replace journals.operations[], the embedded supplier transactions, and
+          bnpl.transactions[].
+        type: string
+      payment_method:
+        $ref: '#/definitions/models.PaymentMethod'
+      supplier_id:
+        type: string
+      type:
+        allOf:
+        - $ref: '#/definitions/models.InitiatorType'
+        description: Type here is the initiator (sale/supplier/bnpl/...). Stored in
+          `initiator_type`.
+      updated_at:
+        type: string
     type: object
   models.UpdateProfileInput:
     properties:
@@ -1422,6 +1551,11 @@ definitions:
         type: integer
       title:
         type: string
+    type: object
+  models.UpdateSaleCartItemInput:
+    properties:
+      quantity:
+        type: number
     type: object
   models.UserRegisterInput:
     properties:
@@ -1464,8 +1598,8 @@ definitions:
         description: Price of the product that was uploaded
         type: integer
       quantity:
-        description: Quantity of the product that was uploaded
-        type: integer
+        description: 'Quantity of the product that was uploaded (fractional: numeric(12,3))'
+        type: number
       selling_price:
         type: integer
       supplier_id:
@@ -2464,14 +2598,14 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "404":
           description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
-      summary: Get a handoff cart at the seller's branch
+      summary: Get a cart (handoff or POS) by id
       tags:
       - handoff
   /api/v1/admin/handoff/carts/{id}/cancel:
@@ -2488,7 +2622,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "404":
           description: Not Found
           schema:
@@ -2499,7 +2633,7 @@ paths:
             $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
-      summary: Cancel a claimed cart
+      summary: Cancel a cart (claimed handoff cart, or the seller's own POS cart)
       tags:
       - handoff
   /api/v1/admin/handoff/carts/{id}/checkout:
@@ -2508,7 +2642,10 @@ paths:
       - application/json
       description: Requires the handoff.checkout capability and an Idempotency-Key
         header. Records the sale on the seller's OPEN shift journal at the cart's
-        branch.
+        branch, then decrements branch stock by each line's quantity. A handoff cart
+        must be claimed by the caller; a POS cart must be theirs and still active.
+        Replaying the same idempotency key returns the completed cart without charging
+        or decrementing again.
       parameters:
       - description: Cart ID
         in: path
@@ -2525,14 +2662,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/models.CheckoutHandoffInput'
+          $ref: '#/definitions/models.CheckoutCartInput'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "400":
           description: Bad Request
           schema:
@@ -2547,7 +2684,7 @@ paths:
             $ref: '#/definitions/models.ErrorOutput'
       security:
       - BearerAuth: []
-      summary: Charge a claimed cart (delegates to the sale flow)
+      summary: Charge a cart (delegates to the sale flow and decrements stock)
       tags:
       - handoff
   /api/v1/admin/handoff/carts/{id}/release:
@@ -2564,7 +2701,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "404":
           description: Not Found
           schema:
@@ -2597,7 +2734,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "400":
           description: Bad Request
           schema:
@@ -2940,6 +3077,202 @@ paths:
       summary: Get a report
       tags:
       - journals
+  /api/v1/admin/pos/carts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List the seller's open till carts
+      tags:
+      - pos
+    post:
+      consumes:
+      - application/json
+      description: 'Replaces the old Redis-backed sales session: the cart is a durable
+        row, so a till recovers its basket after a reload or restart. Branch defaults
+        to the authenticated seller''s branch.'
+      parameters:
+      - description: Optional branch override
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/models.OpenPOSCartInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Open a till cart at the seller's branch
+      tags:
+      - pos
+  /api/v1/admin/pos/carts/{id}/cancel:
+    post:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Abandon a till cart
+      tags:
+      - pos
+  /api/v1/admin/pos/carts/{id}/items:
+    post:
+      consumes:
+      - application/json
+      description: Quantity is fractional, so weighed goods can be sold by the kilogram.
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Product + quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddSaleCartItemInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Add a scanned line to a till cart
+      tags:
+      - pos
+  /api/v1/admin/pos/carts/{id}/items/{item_id}:
+    delete:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Remove a line from a till cart
+      tags:
+      - pos
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      - description: New quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSaleCartItemInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a till cart line's quantity (0 removes it)
+      tags:
+      - pos
   /api/v1/admin/products:
     get:
       description: Query products based on various parameters
@@ -3921,6 +4254,36 @@ paths:
       summary: Update a transaction by ID
       tags:
       - transactions
+  /api/v1/admin/transactions/{id}/details:
+    get:
+      description: 'Returns the transaction plus a discriminated `details` object
+        resolved from its initiator type: the cart and its items for a sale, the supplier
+        for a supplier transaction, the BNPL record for a BNPL one. Types with no
+        detail record of their own (salary, rent, utilities, other) return `details`
+        with only `kind` set — as does a sale that has no cart, such as a keyed amount.
+        Switch on `details.kind` in the client.'
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_TransactionWithDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a transaction with its type-specific details
+      tags:
+      - transactions
   /api/v1/admin/transactions/{transaction_id}:
     get:
       consumes:
@@ -4090,7 +4453,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "401":
           description: Unauthorized
           schema:
@@ -4116,7 +4479,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "404":
           description: Not Found
           schema:
@@ -4128,10 +4491,11 @@ paths:
       summary: Cancel the current handoff cart
       tags:
       - handoff
-  /api/v1/handoff/cart/lines:
+  /api/v1/handoff/cart/items:
     post:
       consumes:
       - application/json
+      description: Quantity is fractional, so weighed goods can be sold by the kilogram.
       parameters:
       - description: Session token
         in: header
@@ -4143,14 +4507,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/models.AddHandoffLineInput'
+          $ref: '#/definitions/models.AddSaleCartItemInput'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "400":
           description: Bad Request
           schema:
@@ -4166,7 +4530,7 @@ paths:
       summary: Add a scanned product line to the cart
       tags:
       - handoff
-  /api/v1/handoff/cart/lines/{line_id}:
+  /api/v1/handoff/cart/items/{item_id}:
     delete:
       parameters:
       - description: Session token
@@ -4174,9 +4538,9 @@ paths:
         name: X-Handoff-Session
         required: true
         type: string
-      - description: Line ID
+      - description: Item ID
         in: path
-        name: line_id
+        name: item_id
         required: true
         type: string
       produces:
@@ -4185,7 +4549,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "404":
           description: Not Found
           schema:
@@ -4206,9 +4570,9 @@ paths:
         name: X-Handoff-Session
         required: true
         type: string
-      - description: Line ID
+      - description: Item ID
         in: path
-        name: line_id
+        name: item_id
         required: true
         type: string
       - description: New quantity
@@ -4216,14 +4580,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/models.UpdateHandoffLineInput'
+          $ref: '#/definitions/models.UpdateSaleCartItemInput'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-models_HandoffCart'
+            $ref: '#/definitions/models.Output-models_SaleCart'
         "400":
           description: Bad Request
           schema:
@@ -4267,6 +4631,36 @@ paths:
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Request checkout — mint a handoff token (QR + 8-digit code)
+      tags:
+      - handoff
+  /api/v1/handoff/cart/session:
+    delete:
+      description: Hard-deletes the cart identified by the session token, cascading
+        its items and its handoff session row. The session token dies with the row,
+        so the X-Handoff-Session header the client cached stops resolving immediately
+        — clients MUST drop it from their local store on a 204. Unlike /cart/cancel
+        (which keeps the cart in a cancelled state), nothing is retained. A token
+        that is unknown or already deleted is 404.
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Session deleted; discard the cached session header
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Delete the current handoff session
       tags:
       - handoff
   /api/v1/handoff/sessions:

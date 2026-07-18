@@ -80,6 +80,10 @@ type JournalOperationInput struct {
 	TransactionBase
 	SupplierTransaction bool   `json:"supplier_transaction" bson:"supplier_transaction"`
 	SupplierID          string `json:"supplier_id" bson:"supplier_id"`
+	// CartID links a sale operation back to the sale_carts row that produced it,
+	// so staff can open the operation and see the items. Set by the cart checkout
+	// flow only: a keyed/manual sale has no cart and leaves this empty.
+	CartID string `json:"cart_id,omitempty" bson:"-"`
 }
 
 type CloseJournalEntryInput struct {

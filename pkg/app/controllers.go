@@ -11,9 +11,9 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers/bnpl"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/finance"
-	handoffcart "github.com/aslon1213/g4h_pos_erp/pkg/controllers/handOffCart"
 	journal_handlers "github.com/aslon1213/g4h_pos_erp/pkg/controllers/journals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/products"
+	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/salecart"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/sales"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/store"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/suppliers"
@@ -42,7 +42,7 @@ type Controllers struct {
 	Dashboard    *analytics.DashboardHandler
 	Proposals    *arrivals.ProposalsHandlers
 	Store        *store.Controllers
-	HandOffCart  *handoffcart.HandOffCartControllers
+	HandOffCart  *salecart.Controllers
 }
 
 // NewControllers builds every controller from the PostgreSQL (GORM) handle.
@@ -65,7 +65,7 @@ func NewControllers(db *gorm.DB) *Controllers {
 		Dashboard:    analytics.New(db),
 		Proposals:    arrivals.New(db),
 		Store:        store.New(db),
-		HandOffCart:  handoffcart.New(db),
+		HandOffCart:  salecart.New(db),
 	}
 	log.Debug().Msg("Controllers initialized successfully")
 	return controllers
@@ -144,6 +144,7 @@ func SetupRoutes(app *fiber.App, controllers *Controllers) {
 	log.Debug().Msg("Proposals routes set up successfully")
 	// Seller Scan & Go surface — under the staff guard, capability + branch scoped.
 	routes.HandOffCartSellerRoutes(app, controllers.HandOffCart, controllers.Middlewares)
+	routes.POSCartRoutes(app, controllers.HandOffCart, controllers.Middlewares)
 	log.Debug().Msg("Handoff seller routes set up successfully")
 	log.Debug().Msg("All routes set up successfully")
 }

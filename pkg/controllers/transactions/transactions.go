@@ -110,6 +110,28 @@ func (t *TransactionsController) GetTransactionByID(c *fiber.Ctx) error {
 	return c.JSON(models.NewOutput(transaction))
 }
 
+// GetTransactionDetailsByID godoc
+// @Security BearerAuth
+// @Summary Get a transaction with its type-specific details
+// @Description Returns the transaction plus a discriminated `details` object resolved from its initiator type: the cart and its items for a sale, the supplier for a supplier transaction, the BNPL record for a BNPL one. Types with no detail record of their own (salary, rent, utilities, other) return `details` with only `kind` set — as does a sale that has no cart, such as a keyed amount. Switch on `details.kind` in the client.
+// @Tags transactions
+// @Produce json
+// @Param id path string true "Transaction ID"
+// @Success 200 {object} models.Output[models.TransactionWithDetails]
+// @Failure 404 {object} models.ErrorOutput
+// @Router /api/v1/admin/transactions/{id}/details [get]
+func (t *TransactionsController) GetTransactionDetailsByID(c *fiber.Ctx) error {
+	transactionID := c.Params("id")
+	details, err := t.Repo.GetDetails(c.Context(), transactionID)
+	if err != nil {
+		t.logger.Error().Err(err).Str("transaction_id", transactionID).Msg("Error finding transaction details by ID")
+		return models.RespondRepoError(c, err)
+	}
+	t.logger.Info().Str("transaction_id", transactionID).Str("kind", string(details.Details.Kind)).
+		Msg("Successfully retrieved transaction details")
+	return c.JSON(models.NewOutput(*details))
+}
+
 // UpdateTransactionByID godoc
 // @Security BearerAuth
 // @Summary Update a transaction by ID

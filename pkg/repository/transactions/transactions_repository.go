@@ -86,6 +86,87 @@ func (r *TransactionsRepository) GetByID(ctx context.Context, id string) (*model
 	return &transaction, nil
 }
 
+// GetDetails returns a transaction together with its type-specific detail — the
+// cart and its items for a sale, the supplier for a supplier transaction, the
+// BNPL record for a BNPL one. This is what backs the staff drill-in from a
+// journal operation.
+//
+// A type with no detail record of its own (salary, rent, utilities, other)
+// resolves to a Details with only Kind set; so does a sale with no cart (a keyed
+// amount, or one whose cart was hard-deleted). Neither is an error — the
+// transaction itself is still the answer, there is simply nothing to expand.
+//
+// A dangling reference (the detail row was deleted out from under the FK) is
+// likewise left nil rather than failing the read: staff should still be able to
+// open the transaction and see its money.
+func (r *TransactionsRepository) GetDetails(ctx context.Context, id string) (*models.TransactionWithDetails, error) {
+	transaction, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &models.TransactionWithDetails{
+		Transaction: *transaction,
+		Details:     models.TransactionDetails{Kind: transaction.Type},
+	}
+
+	switch transaction.Type {
+	case models.InitiatorTypeSales:
+		if transaction.CartID == nil || *transaction.CartID == "" {
+			return out, nil
+		}
+		cart, err := gorm.G[models.SaleCart](r.db).Where("id = ?", *transaction.CartID).First(ctx)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		items, err := gorm.G[models.SaleCartItem](r.db).
+			Where("cart_id = ?", cart.ID).Order("id").Find(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if items == nil {
+			items = []models.SaleCartItem{}
+		}
+		cart.Items = items
+		out.Details.Cart = &cart
+		// Keep ItemCount honest on this surface too. It is normally filled by the
+		// journals repository for list views; leaving it zero here while returning
+		// a populated cart would have the two fields contradict each other.
+		out.ItemCount = len(items)
+
+	case models.InitiatorTypeSupplier:
+		if transaction.SupplierID == nil || *transaction.SupplierID == "" {
+			return out, nil
+		}
+		supplier, err := gorm.G[models.Supplier](r.db).Where("id = ?", *transaction.SupplierID).First(ctx)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		out.Details.Supplier = &supplier
+
+	case models.InitiatorTypeBNPL:
+		if transaction.BNPLID == nil || *transaction.BNPLID == "" {
+			return out, nil
+		}
+		bnpl, err := gorm.G[models.BNPL](r.db).Where("id = ?", *transaction.BNPLID).First(ctx)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		out.Details.BNPL = &bnpl
+	}
+
+	return out, nil
+}
+
 // Update patches the amount / description / initiator type of a transaction. Empty
 // strings are left untouched. Returns repoerr.ErrInvalidInput when amount is not a
 // number and repoerr.ErrNotFound when no transaction matches the id.

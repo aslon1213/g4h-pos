@@ -1,4 +1,4 @@
-package handoffcart_repo
+package salecart
 
 import (
 	"crypto/rand"
