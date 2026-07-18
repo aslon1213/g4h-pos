@@ -68,19 +68,65 @@ const (
 )
 
 type TransactionBase struct {
-	Amount        uint32          `json:"amount" bson:"amount"`
-	Description   string          `json:"description" bson:"description"`
-	Type          TransactionType `json:"type" bson:"type"`
-	PaymentMethod PaymentMethod   `json:"payment_method" bson:"payment_method"`
+	Amount      uint32 `json:"amount" bson:"amount" gorm:"column:amount"`
+	Description string `json:"description" bson:"description" gorm:"column:description"`
+	// Type here is the credit/debit direction. In Mongo it collided on the bson
+	// key "type" with Transaction.Type (initiator) and was effectively dropped;
+	// in Postgres it has its own column `transaction_type`.
+	Type          TransactionType `json:"type" bson:"type" gorm:"column:transaction_type"`
+	PaymentMethod PaymentMethod   `json:"payment_method" bson:"payment_method" gorm:"column:payment_method"`
 }
 
 type Transaction struct {
-	TransactionBase
-	Type      InitiatorType `json:"type" bson:"type"`
-	ID        string        `json:"id" bson:"_id"`
-	CreatedAt time.Time     `json:"created_at" bson:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at" bson:"updated_at"`
-	BranchID  string        `json:"branch_id" bson:"branch_id"`
+	TransactionBase `gorm:"embedded"`
+	// Type here is the initiator (sale/supplier/bnpl/...). Stored in `initiator_type`.
+	Type      InitiatorType `json:"type" bson:"type" gorm:"column:initiator_type"`
+	ID        string        `json:"id" bson:"_id" gorm:"column:id;primaryKey"`
+	CreatedAt time.Time     `json:"created_at" bson:"created_at" gorm:"column:created_at"`
+	UpdatedAt time.Time     `json:"updated_at" bson:"updated_at" gorm:"column:updated_at"`
+	BranchID  string        `json:"branch_id" bson:"branch_id" gorm:"column:branch_id"`
+	// Relational foreign keys (Postgres only; not persisted in Mongo). They
+	// replace journals.operations[], the embedded supplier transactions, and
+	// bnpl.transactions[].
+	JournalID  *string `json:"journal_id,omitempty" bson:"-" gorm:"column:journal_id"`
+	SupplierID *string `json:"supplier_id,omitempty" bson:"-" gorm:"column:supplier_id"`
+	BNPLID     *string `json:"bnpl_id,omitempty" bson:"-" gorm:"column:bnpl_id"`
+	// CartID is the type-specific reference for initiator_type='sale': the
+	// sale_carts row whose items produced this transaction. It is NULL for a
+	// keyed/manual sale (an amount typed straight into a journal or the sales
+	// endpoint), which has no items to point at — so a null cart on a sale is
+	// expected, not a broken link.
+	CartID *string `json:"cart_id,omitempty" bson:"-" gorm:"column:cart_id"`
+
+	// ItemCount is how many cart lines sit behind this transaction. It is NOT a
+	// column — the journals repository fills it in one batched query when it
+	// loads a journal's operations, so a staff list can show "12 items" without
+	// expanding every cart. Zero for any transaction with no cart.
+	//
+	// Clients decide whether a drill-in is available from CartID being non-null,
+	// not from this count (a cart could legitimately be empty).
+	ItemCount int `json:"item_count" bson:"-" gorm:"-"`
+}
+
+func (Transaction) TableName() string { return "transactions" }
+
+// TransactionDetails is the type-specific payload behind a transaction: the
+// thing staff actually want to see when they open one. It is a discriminated
+// union keyed by Kind — exactly one of the pointers is set, and all of them are
+// nil for a type that has no detail record of its own (salary, rent, utilities,
+// other), where the description is the whole story.
+type TransactionDetails struct {
+	Kind     InitiatorType `json:"kind"`
+	Cart     *SaleCart     `json:"cart,omitempty"`
+	Supplier *Supplier     `json:"supplier,omitempty"`
+	BNPL     *BNPL         `json:"bnpl,omitempty"`
+}
+
+// TransactionWithDetails is a transaction plus its resolved type-specific
+// detail, as returned by GET /api/v1/admin/transactions/{id}/details.
+type TransactionWithDetails struct {
+	Transaction
+	Details TransactionDetails `json:"details"`
 }
 
 func NewTransaction(transactionBase *TransactionBase, typeOfTransaction InitiatorType, branchID string) *Transaction {
@@ -173,31 +219,36 @@ func (t *TransactionQueryParams) Validate() error {
 // then we need to add it to the mobile apps balance
 // if apps are used to pay using qr code or app service then it is considered as bank transfer
 type Balance struct {
-	Cash       int32 `json:"cash" bson:"cash"`
-	Bank       int32 `json:"bank" bson:"bank"`
-	Terminal   int32 `json:"terminal" bson:"terminal"`
-	MobileApps int32 `json:"mobile_apps" bson:"mobile_apps"`
+	Cash       int32 `json:"cash" bson:"cash" gorm:"column:cash"`
+	Bank       int32 `json:"bank" bson:"bank" gorm:"column:bank"`
+	Terminal   int32 `json:"terminal" bson:"terminal" gorm:"column:terminal"`
+	MobileApps int32 `json:"mobile_apps" bson:"mobile_apps" gorm:"column:mobile_apps"`
 }
 
 type Finance struct {
-	Balance       Balance `json:"balance" bson:"balance"`
-	TotalIncome   int32   `json:"total_income" bson:"total_income"`
-	TotalExpenses int32   `json:"total_expenses" bson:"total_expenses"`
-	Debt          int32   `json:"debt" bson:"debt"`
+	Balance       Balance `json:"balance" bson:"balance" gorm:"embedded;embeddedPrefix:balance_"`
+	TotalIncome   int32   `json:"total_income" bson:"total_income" gorm:"column:total_income"`
+	TotalExpenses int32   `json:"total_expenses" bson:"total_expenses" gorm:"column:total_expenses"`
+	Debt          int32   `json:"debt" bson:"debt" gorm:"column:debt"`
 }
 
 type FinanceWithTransactions struct {
 	Finance
-	Transactions []Transaction `json:"transactions" bson:"transactions"`
+	Transactions []Transaction `json:"transactions" bson:"transactions" gorm:"-"`
 }
 
+// BranchFinance is the per-branch finance row (table branch_finance). Balances
+// live in embedded columns (balance_cash/…); Suppliers is derived (not stored);
+// Details is free-form jsonb.
 type BranchFinance struct {
-	Finance
-	Suppliers  []string    `json:"suppliers" bson:"suppliers"`
-	BranchID   string      `json:"branch_id" bson:"branch_id"`
-	BranchName string      `json:"branch_name" bson:"branch_name"`
-	Details    interface{} `json:"details" bson:"details"`
+	Finance    `gorm:"embedded"`
+	Suppliers  []string    `json:"suppliers" bson:"suppliers" gorm:"-"`
+	BranchID   string      `json:"branch_id" bson:"branch_id" gorm:"column:branch_id;primaryKey"`
+	BranchName string      `json:"branch_name" bson:"branch_name" gorm:"column:branch_name"`
+	Details    interface{} `json:"details" bson:"details" gorm:"column:details;serializer:json"`
 }
+
+func (BranchFinance) TableName() string { return "branch_finance" }
 
 type NewBranchFinanceInput struct {
 	BranchName string      `json:"branch_name"`

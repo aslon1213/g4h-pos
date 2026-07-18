@@ -1,31 +1,27 @@
 package customers
 
 import (
-	"context"
-	"time"
+	"errors"
 
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	customers_repository "github.com/aslon1213/g4h_pos_erp/pkg/repository/customers"
+	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
+// CustomersController exposes the admin customers endpoints. All database access
+// goes through Repo; the controller only parses requests, validates input, and
+// renders the response envelope.
 type CustomersController struct {
-	customersCollection *mongo.Collection
-	salesCollection     *mongo.Collection
-	bnplCollection      *mongo.Collection
-	DB                  *mongo.Database
+	Repo *customers_repository.CustomersRepository
 }
 
-func New(db *mongo.Database) *CustomersController {
+func New(db *gorm.DB) *CustomersController {
 	return &CustomersController{
-		customersCollection: db.Collection("customers"),
-		salesCollection:     db.Collection("sales"),
-		bnplCollection:      db.Collection("bnpl"),
-		DB:                  db,
+		Repo: customers_repository.New(db),
 	}
 }
 
@@ -88,73 +84,16 @@ func (ctrl *CustomersController) GetCustomers(c *fiber.Ctx) error {
 
 	query.SetDefaults()
 
-	// build pipeline
-	pipeline := mongo.Pipeline{}
-
-	// Match other filters first if any (e.g., name, phone, address)
-	matchStage := bson.D{}
-	if query.Name != "" {
-		matchStage = append(matchStage, bson.E{Key: "name", Value: bson.M{"$regex": query.Name, "$options": "i"}})
-	}
-	if query.Phone != "" {
-		matchStage = append(matchStage, bson.E{Key: "phone", Value: bson.M{"$regex": query.Phone, "$options": "i"}})
-	}
-	if query.Address != "" {
-		matchStage = append(matchStage, bson.E{Key: "address", Value: bson.M{"$regex": query.Address, "$options": "i"}})
-	}
-	if len(matchStage) > 0 {
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: matchStage}})
-	}
-
-	// Project a computed field: sum of active bnpl total_amount
-	pipeline = append(pipeline, bson.D{{Key: "$addFields", Value: bson.M{
-		"active_bnpl_total": bson.M{
-			"$sum": bson.M{
-				"$map": bson.M{
-					"input": bson.M{
-						"$filter": bson.M{
-							"input": "$bnpls",
-							"as":    "bnpl",
-							"cond": bson.M{
-								"$eq": []interface{}{"$$bnpl.status", "active"},
-							},
-						},
-					},
-					"as": "filtered_bnpl",
-					"in": "$$filtered_bnpl.total_amount",
-				},
-			},
-		},
-	}}})
-
-	// Sort using the computed field
-	if query.SortByBNPLTotal != SortByBNPLTotalNone {
-		sortOrder := 1
-		if query.SortByBNPLTotal == SortByBNPLTotalDesc {
-			sortOrder = -1
-		}
-		pipeline = append(pipeline, bson.D{{Key: "$sort", Value: bson.D{
-			{Key: "active_bnpl_total", Value: sortOrder},
-		}}})
-	}
-
-	// Optional pagination
-	pipeline = append(pipeline, bson.D{{Key: "$skip", Value: (query.Page - 1) * query.Count}})
-	pipeline = append(pipeline, bson.D{{Key: "$limit", Value: query.Count}})
-
-	customers := make([]models.Customer, 0)
-	cursor, err := ctrl.customersCollection.Aggregate(context.Background(), pipeline)
+	customers, total, err := ctrl.Repo.Find(c.Context(), customers_repository.ListParams{
+		Name:    query.Name,
+		Phone:   query.Phone,
+		Address: query.Address,
+		Sort:    string(query.SortByBNPLTotal),
+		Page:    query.Page,
+		Count:   query.Count,
+	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to find customers")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-	defer cursor.Close(context.Background())
-
-	if err := cursor.All(context.Background(), &customers); err != nil {
-		log.Error().Err(err).Msg("Failed to decode customers")
 		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
 			Message: err.Error(),
 			Code:    fiber.StatusInternalServerError,
@@ -163,15 +102,6 @@ func (ctrl *CustomersController) GetCustomers(c *fiber.Ctx) error {
 
 	log.Debug().Int("count", len(customers)).Msg("Successfully retrieved customers")
 
-	// query total customers number from the database
-	total, err := ctrl.customersCollection.CountDocuments(context.Background(), bson.M{})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to count customers")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
 	total_pages := int(total) / query.Count
 	if int(total)%query.Count != 0 {
 		total_pages++
@@ -195,10 +125,9 @@ func (ctrl *CustomersController) GetCustomerByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Getting customer by ID")
 
-	var customer models.Customer
-	err := ctrl.customersCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&customer)
+	customer, err := ctrl.Repo.GetByID(c.Context(), id)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if errors.Is(err, repoerr.ErrNotFound) {
 			log.Debug().Str("id", id).Msg("Customer not found")
 			return c.Status(fiber.StatusNotFound).JSON(models.NewOutput([]interface{}{}, models.Error{
 				Message: "Customer not found",
@@ -213,7 +142,7 @@ func (ctrl *CustomersController) GetCustomerByID(c *fiber.Ctx) error {
 	}
 
 	log.Debug().Str("id", id).Msg("Successfully retrieved customer")
-	return c.JSON(models.NewOutput([]models.Customer{customer}))
+	return c.JSON(models.NewOutput([]models.Customer{*customer}))
 }
 
 // CreateCustomer godoc
@@ -255,28 +184,14 @@ func (ctrl *CustomersController) CreateCustomer(c *fiber.Ctx) error {
 		}))
 	}
 
-	// Check if customer with same phone already exists
-	var existingCustomer models.Customer
-	err := ctrl.customersCollection.FindOne(context.Background(), bson.M{"phone": customerBase.Phone}).Decode(&existingCustomer)
-	if err == nil {
-		return c.Status(fiber.StatusConflict).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Customer with this phone number already exists",
-			Code:    fiber.StatusConflict,
-		}))
-	}
-
-	// Create new customer
-	customer := models.Customer{
-		ID:              uuid.New().String(),
-		CustomerBase:    customerBase,
-		BNPLs:           []models.BNPL{},
-		PurchaseHistory: []models.SalesSession{},
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-	}
-
-	_, err = ctrl.customersCollection.InsertOne(context.Background(), customer)
+	customer, err := ctrl.Repo.Create(c.Context(), customerBase)
 	if err != nil {
+		if errors.Is(err, repoerr.ErrConflict) {
+			return c.Status(fiber.StatusConflict).JSON(models.NewOutput([]interface{}{}, models.Error{
+				Message: "Customer with this phone number already exists",
+				Code:    fiber.StatusConflict,
+			}))
+		}
 		log.Error().Err(err).Msg("Failed to create customer")
 		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
 			Message: err.Error(),
@@ -285,7 +200,7 @@ func (ctrl *CustomersController) CreateCustomer(c *fiber.Ctx) error {
 	}
 
 	log.Debug().Str("id", customer.ID).Msg("Successfully created customer")
-	return c.Status(fiber.StatusCreated).JSON(models.NewOutput([]models.Customer{customer}))
+	return c.Status(fiber.StatusCreated).JSON(models.NewOutput([]models.Customer{*customer}))
 }
 
 // UpdateCustomer godoc
@@ -307,7 +222,7 @@ func (ctrl *CustomersController) UpdateCustomer(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Updating customer")
 
-	var customerBase *models.CustomerBase
+	var customerBase models.CustomerBase
 	if err := c.BodyParser(&customerBase); err != nil {
 		log.Error().Err(err).Msg("Failed to parse customer data")
 		return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
@@ -316,84 +231,30 @@ func (ctrl *CustomersController) UpdateCustomer(c *fiber.Ctx) error {
 		}))
 	}
 
-	// Check if customer exists
-	var existingCustomer models.Customer
-	err := ctrl.customersCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&existingCustomer)
+	updatedCustomer, err := ctrl.Repo.Update(c.Context(), id, customerBase)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		switch {
+		case errors.Is(err, repoerr.ErrNotFound):
 			return c.Status(fiber.StatusNotFound).JSON(models.NewOutput([]interface{}{}, models.Error{
 				Message: "Customer not found",
 				Code:    fiber.StatusNotFound,
 			}))
-		}
-		log.Error().Err(err).Str("id", id).Msg("Failed to find customer")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
-	// Check if phone number is being changed and if it conflicts with another customer
-	if customerBase.Phone != existingCustomer.Phone {
-		var phoneConflict models.Customer
-		err := ctrl.customersCollection.FindOne(context.Background(), bson.M{"phone": customerBase.Phone}).Decode(&phoneConflict)
-		if err == nil {
+		case errors.Is(err, repoerr.ErrConflict):
 			return c.Status(fiber.StatusConflict).JSON(models.NewOutput([]interface{}{}, models.Error{
 				Message: "Another customer with this phone number already exists",
 				Code:    fiber.StatusConflict,
 			}))
+		default:
+			log.Error().Err(err).Str("id", id).Msg("Failed to update customer")
+			return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
+				Message: err.Error(),
+				Code:    fiber.StatusInternalServerError,
+			}))
 		}
 	}
 
-	// Update customer
-	// Build dynamic update document
-	updateFields := bson.M{"updated_at": time.Now()}
-	if customerBase.Name != "" {
-		updateFields["name"] = customerBase.Name
-	}
-	if customerBase.Phone != "" {
-		updateFields["phone"] = customerBase.Phone
-	}
-	if customerBase.Address != "" {
-		updateFields["address"] = customerBase.Address
-	}
-
-	// update the created time
-	updateFields["created_at"] = time.Now()
-
-	update := bson.M{
-		"$set": updateFields,
-	}
-
-	result, err := ctrl.customersCollection.UpdateOne(context.Background(), bson.M{"_id": id}, update)
-	if err != nil {
-		log.Error().Err(err).Str("id", id).Msg("Failed to update customer")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
-	if result.ModifiedCount == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Customer not found or no changes made",
-			Code:    fiber.StatusNotFound,
-		}))
-	}
-
-	// Fetch updated customer
-	var updatedCustomer models.Customer
-	err = ctrl.customersCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&updatedCustomer)
-	if err != nil {
-		log.Error().Err(err).Str("id", id).Msg("Failed to fetch updated customer")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
 	log.Debug().Str("id", id).Msg("Successfully updated customer")
-	return c.JSON(models.NewOutput([]models.Customer{updatedCustomer}))
+	return c.JSON(models.NewOutput([]models.Customer{*updatedCustomer}))
 }
 
 // DeleteCustomer godoc
@@ -412,52 +273,27 @@ func (ctrl *CustomersController) DeleteCustomer(c *fiber.Ctx) error {
 	id := c.Params("id")
 	log.Debug().Str("id", id).Msg("Deleting customer")
 
-	// Check if customer exists
-	var existingCustomer models.Customer
-	err := ctrl.customersCollection.FindOne(context.Background(), bson.M{"_id": id}).Decode(&existingCustomer)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
+	if err := ctrl.Repo.Delete(c.Context(), id); err != nil {
+		switch {
+		case errors.Is(err, customers_repository.ErrActiveBNPL):
+			log.Debug().Str("id", id).Msg("Customer has active BNPL transactions")
+			return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
+				Message: err.Error(),
+				Code:    fiber.StatusBadRequest,
+			}))
+		case errors.Is(err, repoerr.ErrNotFound):
 			log.Debug().Str("id", id).Msg("Customer not found")
 			return c.Status(fiber.StatusNotFound).JSON(models.NewOutput([]interface{}{}, models.Error{
 				Message: "Customer not found",
 				Code:    fiber.StatusNotFound,
 			}))
-		}
-		log.Error().Err(err).Str("id", id).Msg("Failed to find customer")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
-	// Check if customer has active BNPLs
-	for _, bnpl := range existingCustomer.BNPLs {
-		log.Debug().Str("status", string(bnpl.Status)).Msg("Checking BNPL status")
-		if bnpl.Status == models.BNPLStatusActive {
-			log.Debug().Str("id", id).Msg("Customer has active BNPL transactions")
-			return c.Status(fiber.StatusBadRequest).JSON(models.NewOutput([]interface{}{}, models.Error{
-				Message: "Cannot delete customer with active BNPL transactions",
-				Code:    fiber.StatusBadRequest,
+		default:
+			log.Error().Err(err).Str("id", id).Msg("Failed to delete customer")
+			return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
+				Message: err.Error(),
+				Code:    fiber.StatusInternalServerError,
 			}))
 		}
-	}
-
-	// Delete customer
-	result, err := ctrl.customersCollection.DeleteOne(context.Background(), bson.M{"_id": id})
-	if err != nil {
-		log.Error().Err(err).Str("id", id).Msg("Failed to delete customer")
-		return c.Status(fiber.StatusInternalServerError).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}))
-	}
-
-	if result.DeletedCount == 0 {
-		log.Debug().Str("id", id).Msg("Customer not found")
-		return c.Status(fiber.StatusNotFound).JSON(models.NewOutput([]interface{}{}, models.Error{
-			Message: "Customer not found",
-			Code:    fiber.StatusNotFound,
-		}))
 	}
 
 	log.Debug().Str("id", id).Msg("Successfully deleted customer")

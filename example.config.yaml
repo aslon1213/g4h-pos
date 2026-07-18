@@ -1,14 +1,20 @@
 database:
-  host: "mongo1"
-  port: "27017"
-  username: "admin"
-  password: "admin"
-  database: "magazin"
+  # PostgreSQL / Supabase. Prefer `dsn` (the Supabase connection-pooler URI);
+  # the discrete host/port/username/password/database fields are only used when
+  # `dsn` is empty.
+  dsn: "postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres"
+  ssl_mode: "require"
+  host: "localhost"
+  port: "5432"
+  username: "postgres"
+  password: "postgres"
+  database: "postgres"
   max_connections: 20
   min_pool_size: 10
-  auth: false
-  replica_set: myReplicaSet
-  url: mongodb://admin:admin@localhost:27017/?replicate_set=myReplicaSet
+  # --- MongoDB (legacy, kept only for the migration/ETL window) ---
+  # auth: false
+  # replica_set: myReplicaSet
+  # url: mongodb://admin:admin@localhost:27017/?replicaSet=myReplicaSet
 
 s3:
   region: ""
@@ -27,7 +33,8 @@ server:
   host: localhost
   port: ":12000"
   secret_symmetric_key: "hello-world"
-  token_expiry_hours: 48
+  token_expiry_hours: 48            # access token lifetime (hours)
+  refresh_token_expiry_hours: 720   # refresh token lifetime (hours); defaults to 720 (30d) if unset
   admin_docs_users:
     - username: "admin"
       password: "admin"

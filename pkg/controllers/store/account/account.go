@@ -4,7 +4,7 @@ import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	customerrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/customer"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles the storefront customer account surface (address book,
@@ -13,7 +13,7 @@ type Controller struct {
 	Customers *customerrepo.CustomerRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Customers: customerrepo.New(db),
 	}

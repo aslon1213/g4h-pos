@@ -16,8 +16,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
 var branches = []string{"xonobod", "polevoy"}
@@ -31,7 +31,7 @@ type ProposalsHandlers struct {
 	Repo *arrivalsrepo.ArrivalsRepository
 }
 
-func New(db *mongo.Database) *ProposalsHandlers {
+func New(db *gorm.DB) *ProposalsHandlers {
 	return &ProposalsHandlers{
 		ctx:  context.Background(),
 		Repo: arrivalsrepo.New(db),
@@ -292,7 +292,7 @@ func (h *ProposalsHandlers) GetProposals(c *fiber.Ctx) error {
 	response := []fiber.Map{}
 	for _, proposal := range proposals {
 		response = append(response, fiber.Map{
-			"_id":       proposal.ID.Hex(),
+			"_id":       proposal.ID,
 			"name":      proposal.Name,
 			"date":      proposal.Date.Format("02-01-2006"),
 			"branch":    proposal.Branch,
@@ -332,7 +332,7 @@ func (h *ProposalsHandlers) GetProposalDetail(c *fiber.Ctx) error {
 	log.Info().Str("proposal_id", proposalID).Msg("get_proposal_detail.success")
 	return c.Render("proposal", fiber.Map{
 		"proposal": fiber.Map{
-			"_id":       proposal.ID.Hex(),
+			"_id":       proposal.ID,
 			"name":      proposal.Name,
 			"date":      proposal.Date.Format("02-01-2006"),
 			"branch":    proposal.Branch,
@@ -552,7 +552,7 @@ func (h *ProposalsHandlers) GeneratePDF(c *fiber.Ctx) error {
 		}
 
 		formattedProposals = append(formattedProposals, fiber.Map{
-			"_id":        proposal.ID.Hex(),
+			"_id":        proposal.ID,
 			"name":       proposal.Name,
 			"date":       proposal.Date.Format("02-01-2006"),
 			"branch":     proposal.Branch,

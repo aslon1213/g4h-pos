@@ -427,7 +427,7 @@ func TestQueryJournal(t *testing.T) {
 	journals := getJournals(t, client, branchID, 1, 10)
 	assert.Equal(t, 10, len(journals), "Expected 1 journal, but got %d", len(journals))
 
-	resp, output_, err := client.GetJournalByID(journals[0].ID.Hex())
+	resp, output_, err := client.GetJournalByID(journals[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestNewOperation(t *testing.T) {
 	journals := getJournals(t, client, branchID, 1, 10)
 	assert.Equal(t, 10, len(journals), "Expected 1 journal, but got %d", len(journals))
 
-	journalID := journals[0].ID.Hex()
+	journalID := journals[0].ID
 	operations := []models.JournalOperationInput{
 		{TransactionBase: models.TransactionBase{Amount: 1000000, Description: "Test Operation 1 in journal " + journalID, Type: models.TransactionTypeDebit, PaymentMethod: models.PaymentMethodBank}, SupplierTransaction: false},
 		{TransactionBase: models.TransactionBase{Amount: 1000000, Description: "Test Operation 2 in journal " + journalID, Type: models.TransactionTypeCredit, PaymentMethod: models.PaymentMethodBank}, SupplierTransaction: false},
@@ -488,7 +488,7 @@ func TestUpdateOperation(t *testing.T) {
 	operation_1 := journal_.Operations[0]
 	operation_2 := journal_.Operations[1]
 
-	resp, output_, err := client.UpdateOperation(journal_.ID.Hex(), operation_1.ID, 1000000, "")
+	resp, output_, err := client.UpdateOperation(journal_.ID, operation_1.ID, 1000000, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +498,7 @@ func TestUpdateOperation(t *testing.T) {
 	assert.Equal(t, output_.Data.Operations[0].Amount, uint32(1000000), "Expected amount to be %d, but got %d", 1000000, output_.Data.Operations[0].Amount)
 	assert.Equal(t, output_.Data.Operations[0].Description, operation_1.Description, "Expected description to be %s, but got %s", operation_1.Description, output_.Data.Operations[0].Description)
 
-	resp, output_, err = client.UpdateOperation(journal_.ID.Hex(), operation_2.ID, 1000000, "Test Operation 2 - bla bla bla")
+	resp, output_, err = client.UpdateOperation(journal_.ID, operation_2.ID, 1000000, "Test Operation 2 - bla bla bla")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestDeleteOperation(t *testing.T) {
 	journals := getJournals(t, client, branchID, 1, 10)
 	journal := getFirstOpenJournal(t, journals)
 
-	resp, output_, err := client.DeleteOperation(journal.ID.Hex(), journal.Operations[0].ID)
+	resp, output_, err := client.DeleteOperation(journal.ID, journal.Operations[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +538,7 @@ func TestCloseJournal(t *testing.T) {
 
 	journals := getJournals(t, client, branchID, 1, 10)
 	journal := getFirstOpenJournal(t, journals)
-	log.Info().Interface("journals", journal.ID.Hex()).Msg("Journals")
+	log.Info().Interface("journals", journal.ID).Msg("Journals")
 	log.Info().Interface("journal chosen", journal).Msg("Journal")
 
 	input := models.CloseJournalEntryInput{
@@ -546,7 +546,7 @@ func TestCloseJournal(t *testing.T) {
 		TerminalIncome: 1000000,
 	}
 
-	resp, output_, err := client.CloseJournal(journal.ID.Hex(), input)
+	resp, output_, err := client.CloseJournal(journal.ID, input)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to close journal")
 		t.Fatal(err)
@@ -554,7 +554,7 @@ func TestCloseJournal(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Expected status code 200, but got %d", resp.StatusCode)
 	assert.Nil(t, output_.Error, "Expected no error, but got one")
 
-	resp, output_2, err := client.GetJournalByID(journal.ID.Hex())
+	resp, output_2, err := client.GetJournalByID(journal.ID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get journal")
 		t.Fatal(err)
@@ -575,9 +575,9 @@ func TestReOpenJournal(t *testing.T) {
 
 	journals := getJournals(t, client, branchID, 1, 10)
 	journal := getFirstClosedJournal(t, journals)
-	log.Info().Interface("journal chosen", journal.ID.Hex()).Msg("Journal")
+	log.Info().Interface("journal chosen", journal.ID).Msg("Journal")
 
-	resp, output_, err := client.ReOpenJournal(journal.ID.Hex())
+	resp, output_, err := client.ReOpenJournal(journal.ID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to re-open journal")
 		t.Fatal(err)
@@ -585,7 +585,7 @@ func TestReOpenJournal(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Expected status code 200, but got %d", resp.StatusCode)
 	assert.Nil(t, output_.Error, "Expected no error, but got one")
 
-	resp, output_2, err := client.GetJournalByID(journal.ID.Hex())
+	resp, output_2, err := client.GetJournalByID(journal.ID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get journal")
 		t.Fatal(err)

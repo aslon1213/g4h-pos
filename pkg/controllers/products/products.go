@@ -4,33 +4,33 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 	productsrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/products"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	s3provider "github.com/aslon1213/g4h_pos_erp/platform/s3"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"gorm.io/gorm"
 )
 
-// ProductsController exposes the admin products endpoints. All Mongo access goes
+// ProductsController exposes the admin products endpoints. All DB access goes
 // through Repo; the controller parses requests, performs S3 image storage, logs
 // audit activity, and renders the response envelope.
 type ProductsController struct {
-	Repo                 *productsrepo.ProductsRepository
-	ActivitiesCollection *mongo.Collection
-	S3Client             *s3provider.S3Client
+	Repo           *productsrepo.ProductsRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
+	S3Client       *s3provider.S3Client
 }
 
-func New(db *mongo.Database) *ProductsController {
+func New(db *gorm.DB) *ProductsController {
 	return &ProductsController{
-		Repo:                 productsrepo.New(db),
-		ActivitiesCollection: db.Collection("activities"),
+		Repo:           productsrepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
 	}
 }
 
@@ -66,7 +66,7 @@ func (p *ProductsController) CreateProduct(c *fiber.Ctx) error {
 		log.Error().Err(err).Msg("Failed to insert product")
 		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateProduct, product.ID, p.ActivitiesCollection)
+	p.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateProduct, product.ID)
 	log.Info().Str("id", product.ID).Msg("Successfully created product")
 	return c.Status(fiber.StatusCreated).JSON(models.NewOutput(
 		[]models.Product{*product},
@@ -107,11 +107,11 @@ func (p *ProductsController) EditProduct(c *fiber.Ctx) error {
 	}
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeEditProduct, fiber.Map{
+	p.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeEditProduct, fiber.Map{
 		"id":     id,
 		"update": base,
 		"user":   c.Locals("user").(string),
-	}, p.ActivitiesCollection)
+	})
 
 	log.Info().Str("id", id).Msg("Successfully updated product")
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(
@@ -146,9 +146,9 @@ func (p *ProductsController) DeleteProduct(c *fiber.Ctx) error {
 
 	log.Info().Str("id", id).Msg("Successfully deleted product")
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeDeleteProduct, fiber.Map{
+	p.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeDeleteProduct, fiber.Map{
 		"id": id,
-	}, p.ActivitiesCollection)
+	})
 	return c.Status(fiber.StatusOK).JSON(models.NewOutput(
 		[]models.Product{
 			{

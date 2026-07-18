@@ -1,35 +1,33 @@
 // Package arrivals is the repository for the admin arrivals/proposals domain
-// (the `proposals` collection). It owns every mongo/bson interaction for the
-// proposals controller, mirroring the suppliers/finance repositories: the
-// controller holds an *ArrivalsRepository and its handlers call these methods
-// instead of touching the collection directly. Non-Mongo concerns (S3/local
-// image-file storage, the invoice forward-proxy, PDF rendering) intentionally
-// remain in the controller — only the document reads/writes (including the
-// image_file field update) live here.
+// (the `proposals` table). It owns every gorm/Postgres interaction for the
+// proposals controller, mirroring the other ported repositories: the controller
+// holds an *ArrivalsRepository and its handlers call these methods instead of
+// touching the database directly. Non-DB concerns (S3/local image-file storage,
+// the invoice forward-proxy, PDF rendering) intentionally remain in the
+// controller — only the row reads/writes (including the image_file field
+// update) live here.
 package arrivals
 
 import (
 	"context"
 	"errors"
-	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
-// ArrivalsRepository owns the proposals collection.
+// ArrivalsRepository owns the proposals table.
 type ArrivalsRepository struct {
-	proposals *mongo.Collection
+	db *gorm.DB
 }
 
 // New builds the repository.
-func New(db *mongo.Database) *ArrivalsRepository {
-	return &ArrivalsRepository{
-		proposals: db.Collection("proposals"),
-	}
+func New(db *gorm.DB) *ArrivalsRepository {
+	return &ArrivalsRepository{db: db}
 }
 
 // ProposalQueryParams holds the optional filters the GetProposals handler
@@ -47,51 +45,36 @@ type ProposalQueryParams struct {
 }
 
 // Find returns proposals matching the query, replicating the controller's
-// filter construction exactly (case-insensitive regex on name/branch, a
-// fulfilled flag, and a date range with the same default bounds).
+// filter construction (case-insensitive contains on name/branch, a fulfilled
+// flag, and a date range with the same default bounds).
 func (r *ArrivalsRepository) Find(ctx context.Context, q ProposalQueryParams) ([]models.ProductProposal, error) {
-	filter := bson.M{}
+	// Date bounds are always applied: provided date_from/date_to (the caller
+	// adds the +1 day to date_to), else the last 30 days / now defaults.
+	lower := time.Now().Add(-30 * 24 * time.Hour)
+	if q.DateFrom != nil {
+		lower = *q.DateFrom
+	}
+	upper := time.Now()
+	if q.DateTo != nil {
+		upper = *q.DateTo
+	}
+
+	query := gorm.G[models.ProductProposal](r.db).
+		Where("date >= ?", lower).
+		Where("date <= ?", upper)
 
 	if q.Name != "" {
-		filter["name"] = bson.M{"$regex": regexp.QuoteMeta(q.Name), "$options": "i"}
+		query = query.Where("name ILIKE ?", "%"+q.Name+"%")
 	}
 	if q.Branch != "" {
-		filter["branch"] = bson.M{"$regex": regexp.QuoteMeta(q.Branch), "$options": "i"}
+		query = query.Where("branch ILIKE ?", "%"+q.Branch+"%")
 	}
 	if q.Fulfilled != nil {
-		filter["fulfilled"] = *q.Fulfilled
+		query = query.Where("fulfilled = ?", *q.Fulfilled)
 	}
 
-	// Lower date bound: provided date_from, else 30 days ago.
-	if q.DateFrom != nil {
-		filter["date"] = bson.M{"$gte": *q.DateFrom}
-	} else {
-		filter["date"] = bson.M{"$gte": time.Now().Add(-30 * 24 * time.Hour)}
-	}
-
-	// Upper date bound: provided date_to (caller adds the +1 day), else now.
-	if q.DateTo != nil {
-		if _, exists := filter["date"]; exists {
-			filter["date"].(bson.M)["$lte"] = *q.DateTo
-		} else {
-			filter["date"] = bson.M{"$lte": *q.DateTo}
-		}
-	} else {
-		if _, exists := filter["date"]; exists {
-			filter["date"].(bson.M)["$lte"] = time.Now()
-		} else {
-			filter["date"] = bson.M{"$lte": time.Now()}
-		}
-	}
-
-	cursor, err := r.proposals.Find(ctx, filter)
+	proposals, err := query.Find(ctx)
 	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	proposals := []models.ProductProposal{}
-	if err := cursor.All(ctx, &proposals); err != nil {
 		return nil, err
 	}
 	return proposals, nil
@@ -100,63 +83,50 @@ func (r *ArrivalsRepository) Find(ctx context.Context, q ProposalQueryParams) ([
 // FindUnfulfilled returns every proposal whose fulfilled flag is false, used by
 // the PDF generation handler.
 func (r *ArrivalsRepository) FindUnfulfilled(ctx context.Context) ([]models.ProductProposal, error) {
-	cursor, err := r.proposals.Find(ctx, bson.M{"fulfilled": false})
+	proposals, err := gorm.G[models.ProductProposal](r.db).Where("fulfilled = ?", false).Find(ctx)
 	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	proposals := []models.ProductProposal{}
-	if err := cursor.All(ctx, &proposals); err != nil {
 		return nil, err
 	}
 	return proposals, nil
 }
 
-// GetByID returns a single proposal by its hex ObjectID. A malformed hex string
-// yields repoerr.ErrInvalidInput; a missing document repoerr.ErrNotFound.
-func (r *ArrivalsRepository) GetByID(ctx context.Context, hexID string) (*models.ProductProposal, error) {
-	oid, err := bson.ObjectIDFromHex(hexID)
-	if err != nil {
-		return nil, repoerr.ErrInvalidInput
-	}
-	proposal := &models.ProductProposal{}
-	err = r.proposals.FindOne(ctx, bson.M{"_id": oid}).Decode(proposal)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+// GetByID returns a single proposal by its id. A missing row yields
+// repoerr.ErrNotFound.
+func (r *ArrivalsRepository) GetByID(ctx context.Context, id string) (*models.ProductProposal, error) {
+	proposal, err := gorm.G[models.ProductProposal](r.db).Where("id = ?", id).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return proposal, nil
+	return &proposal, nil
 }
 
 // CreateMany inserts one proposal per name under the given branch (all freshly
-// dated, unfulfilled) and returns the inserted documents' hex ObjectIDs in
-// insertion order.
+// dated, unfulfilled) and returns the inserted rows' ids in insertion order.
 func (r *ArrivalsRepository) CreateMany(ctx context.Context, branch string, names []string) ([]string, error) {
 	now := time.Now()
 
-	var proposalsToInsert []interface{}
+	proposals := make([]models.ProductProposal, 0, len(names))
+	ids := make([]string, 0, len(names))
 	for _, name := range names {
-		proposal := models.ProductProposal{
-			ID:        bson.NewObjectID(),
+		id := uuid.New().String()
+		proposals = append(proposals, models.ProductProposal{
+			ID:        id,
 			Name:      name,
 			Date:      now,
 			Branch:    branch,
 			Fulfilled: false,
-		}
-		proposalsToInsert = append(proposalsToInsert, proposal)
+		})
+		ids = append(ids, id)
+	}
+	if len(proposals) == 0 {
+		return []string{}, nil
 	}
 
-	result, err := r.proposals.InsertMany(ctx, proposalsToInsert)
-	if err != nil {
+	if err := gorm.G[models.ProductProposal](r.db).CreateInBatches(ctx, &proposals, 100); err != nil {
 		return nil, err
-	}
-
-	var ids []string
-	for _, id := range result.InsertedIDs {
-		ids = append(ids, id.(bson.ObjectID).Hex())
 	}
 	return ids, nil
 }
@@ -170,17 +140,11 @@ type ProposalUpdate struct {
 	Fulfilled *bool
 }
 
-// Update patches the editable fields of a proposal identified by hex ObjectID.
-// A malformed hex string yields repoerr.ErrInvalidInput. The controller's
-// UpdateOne did not assert a matched count, so this method preserves that
-// behaviour and does not return ErrNotFound on a no-op match.
-func (r *ArrivalsRepository) Update(ctx context.Context, hexID string, in ProposalUpdate) error {
-	oid, err := bson.ObjectIDFromHex(hexID)
-	if err != nil {
-		return repoerr.ErrInvalidInput
-	}
-
-	set := bson.M{}
+// Update patches the editable fields of a proposal identified by id. The
+// controller's original UpdateOne did not assert a matched count, so this method
+// preserves that behaviour and does not return ErrNotFound on a no-op match.
+func (r *ArrivalsRepository) Update(ctx context.Context, id string, in ProposalUpdate) error {
+	set := map[string]interface{}{}
 	if in.Name != "" {
 		set["name"] = in.Name
 	}
@@ -190,72 +154,56 @@ func (r *ArrivalsRepository) Update(ctx context.Context, hexID string, in Propos
 	if in.Fulfilled != nil {
 		set["fulfilled"] = *in.Fulfilled
 	}
+	if len(set) == 0 {
+		return nil
+	}
 
-	_, err = r.proposals.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": set})
-	return err
+	return r.db.WithContext(ctx).Table("proposals").Where("id = ?", id).Updates(set).Error
 }
 
-// SetImageFile records the stored image path on the proposal document. The path
-// itself is produced by the controller's file-storage logic; only the document
-// write lives here. A malformed hex string yields repoerr.ErrInvalidInput.
-func (r *ArrivalsRepository) SetImageFile(ctx context.Context, hexID, imageFile string) error {
-	oid, err := bson.ObjectIDFromHex(hexID)
-	if err != nil {
-		return repoerr.ErrInvalidInput
-	}
-	_, err = r.proposals.UpdateOne(
-		ctx,
-		bson.M{"_id": oid},
-		bson.M{"$set": bson.M{"image_file": imageFile}},
-	)
-	return err
+// SetImageFile records the stored image path on the proposal row. The path
+// itself is produced by the controller's file-storage logic; only the row write
+// lives here.
+func (r *ArrivalsRepository) SetImageFile(ctx context.Context, id, imageFile string) error {
+	return r.db.WithContext(ctx).Table("proposals").Where("id = ?", id).Update("image_file", imageFile).Error
 }
 
-// Delete removes a proposal by its hex ObjectID. A malformed hex string yields
-// repoerr.ErrInvalidInput; a delete that matched nothing repoerr.ErrNotFound.
-func (r *ArrivalsRepository) Delete(ctx context.Context, hexID string) error {
-	oid, err := bson.ObjectIDFromHex(hexID)
-	if err != nil {
-		return repoerr.ErrInvalidInput
-	}
-	res, err := r.proposals.DeleteOne(ctx, bson.M{"_id": oid})
+// Delete removes a proposal by its id. A delete that matched nothing yields
+// repoerr.ErrNotFound.
+func (r *ArrivalsRepository) Delete(ctx context.Context, id string) error {
+	affected, err := gorm.G[models.ProductProposal](r.db).Where("id = ?", id).Delete(ctx)
 	if err != nil {
 		return err
 	}
-	if res.DeletedCount == 0 {
+	if affected == 0 {
 		return repoerr.ErrNotFound
 	}
 	return nil
 }
 
-// Fulfill marks the given proposals as fulfilled, scoped to a branch. Hex IDs
-// that fail to parse are skipped (mirroring the controller, which continues on
-// a bad id). Returns the matched and modified counts; an empty objectIDs set —
-// i.e. no parseable ids — yields repoerr.ErrInvalidInput. Note the filter
-// requires both _id in ids and branch == branch, exactly as the controller did.
-func (r *ArrivalsRepository) Fulfill(ctx context.Context, branch string, hexIDs []string) (matched int64, modified int64, err error) {
-	var objectIDs []bson.ObjectID
-	for _, id := range hexIDs {
-		oid, perr := bson.ObjectIDFromHex(id)
-		if perr != nil {
+// Fulfill marks the given proposals as fulfilled, scoped to a branch. Empty ids
+// are skipped; when no usable id remains it yields repoerr.ErrInvalidInput. The
+// filter requires both id IN ids and branch == branch, exactly as before.
+// Postgres reports matched == modified for the UPDATE, so both counts are equal.
+func (r *ArrivalsRepository) Fulfill(ctx context.Context, branch string, ids []string) (matched int64, modified int64, err error) {
+	valid := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
 			continue
 		}
-		objectIDs = append(objectIDs, oid)
+		valid = append(valid, id)
 	}
-	if len(objectIDs) == 0 {
+	if len(valid) == 0 {
 		return 0, 0, repoerr.ErrInvalidInput
 	}
 
-	result, err := r.proposals.UpdateMany(
-		ctx,
-		bson.M{
-			"_id":    bson.M{"$in": objectIDs},
-			"branch": branch,
-		},
-		bson.M{"$set": bson.M{"fulfilled": true}},
-	)
+	affected, err := gorm.G[models.ProductProposal](r.db).
+		Where("id IN ?", valid).
+		Where("branch = ?", branch).
+		Update(ctx, "fulfilled", true)
 	if err != nil {
 		return 0, 0, err
 	}
-	return result.MatchedCount, result.ModifiedCount, nil
+	return int64(affected), int64(affected), nil
 }

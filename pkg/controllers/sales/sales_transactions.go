@@ -1,28 +1,28 @@
 package sales
 
 import (
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 	salesrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/sales"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // SalesTransactionsController exposes the sales (POS checkout) transaction
 // endpoints. All database access goes through Repo; the controller only parses
 // requests, logs audit activity, and renders the response envelope.
 type SalesTransactionsController struct {
-	Repo       *salesrepo.SalesRepository
-	activities *mongo.Collection
+	Repo           *salesrepo.SalesRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
 }
 
-func New(db *mongo.Database) *SalesTransactionsController {
+func New(db *gorm.DB) *SalesTransactionsController {
 	log.Info().Msg("Initializing SalesTransactionsController")
 	return &SalesTransactionsController{
-		Repo:       salesrepo.New(db),
-		activities: db.Collection("activities"),
+		Repo:           salesrepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
 	}
 }
 
@@ -53,11 +53,11 @@ func (s *SalesTransactionsController) CreateSalesTransaction(c *fiber.Ctx) error
 		Msg("Creating new sales transaction")
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateTransaction, transaction_base, s.activities)
+	s.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateTransaction, transaction_base)
 
 	transaction, err := s.Repo.CreateTransaction(c.Context(), branch_id, transaction_base)
 	if err != nil {
-		// StartTransaction / commit / business failures all surface as 500.
+		// transaction / business failures all surface as 500.
 		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
@@ -86,11 +86,11 @@ func (s *SalesTransactionsController) DeleteSalesTransaction(c *fiber.Ctx) error
 	log.Info().Str("transaction_id", transaction_id).Msg("Deleting sales transaction")
 
 	// log activity
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeDeleteTransaction, transaction_id, s.activities)
+	s.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeDeleteTransaction, transaction_id)
 
 	transaction, err := s.Repo.DeleteTransaction(c.Context(), transaction_id)
 	if err != nil {
-		// StartTransaction / commit / lookup / business failures all surface as 500.
+		// transaction / lookup / business failures all surface as 500.
 		return models.RespondError(c, fiber.StatusInternalServerError, err.Error())
 	}
 

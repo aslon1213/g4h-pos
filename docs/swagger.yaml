@@ -1,30 +1,14 @@
 definitions:
-  arrivals.EditProposalRequest:
-    properties:
-      branch:
-        type: string
-      fulfilled:
-        type: boolean
-      name:
-        type: string
-    type: object
-  auth.LoginInput:
-    properties:
-      password:
-        type: string
-      username:
-        type: string
-    required:
-    - password
-    - username
-    type: object
-  middleware.Activity:
+  activities_repo.Activity:
     properties:
       action:
-        $ref: '#/definitions/middleware.ActivityType'
-      data: {}
+        $ref: '#/definitions/activities_repo.ActivityType'
+      data:
+        type: object
       date:
         type: string
+      id:
+        type: integer
       ip:
         type: string
       status:
@@ -32,7 +16,7 @@ definitions:
       userID:
         type: string
     type: object
-  middleware.ActivityType:
+  activities_repo.ActivityType:
     enum:
     - login_success
     - login_failed
@@ -62,6 +46,14 @@ definitions:
     - create_finance
     - edit_finance
     - delete_finance
+    - create_category
+    - edit_category
+    - delete_category
+    - create_brand
+    - edit_brand
+    - delete_brand
+    - handoff_claim
+    - handoff_checkout
     type: string
     x-enum-varnames:
     - ActivityTypeLogin
@@ -92,11 +84,54 @@ definitions:
     - ActivityTypeCreateFinance
     - ActivityTypeEditFinance
     - ActivityTypeDeleteFinance
+    - ActivityTypeCreateCategory
+    - ActivityTypeEditCategory
+    - ActivityTypeDeleteCategory
+    - ActivityTypeCreateBrand
+    - ActivityTypeEditBrand
+    - ActivityTypeDeleteBrand
+    - ActivityTypeHandoffClaim
+    - ActivityTypeHandoffCheckout
+  arrivals.EditProposalRequest:
+    properties:
+      branch:
+        type: string
+      fulfilled:
+        type: boolean
+      name:
+        type: string
+    type: object
+  auth.LoginInput:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  auth.RefreshInput:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  models.AddSaleCartItemInput:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: number
+    type: object
   models.Address:
     properties:
       city:
         type: string
       country:
+        type: string
+      customer_id:
         type: string
       full_name:
         type: string
@@ -181,6 +216,15 @@ definitions:
       phone:
         type: string
     type: object
+  models.BranchAvailability:
+    properties:
+      branch_id:
+        type: string
+      in_stock:
+        type: boolean
+      quantity:
+        type: integer
+    type: object
   models.BranchFinance:
     properties:
       balance:
@@ -201,12 +245,126 @@ definitions:
       total_income:
         type: integer
     type: object
+  models.Brand:
+    properties:
+      country:
+        type: string
+      id:
+        type: string
+      logo:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  models.BrandInput:
+    properties:
+      country:
+        type: string
+      logo:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  models.CartKind:
+    enum:
+    - handoff
+    - pos
+    type: string
+    x-enum-varnames:
+    - CartKindHandoff
+    - CartKindPOS
+  models.CartState:
+    enum:
+    - active
+    - ready_for_handoff
+    - claimed
+    - completed
+    - expired
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - CartActive
+    - CartReadyForHandoff
+    - CartClaimed
+    - CartCompleted
+    - CartExpired
+    - CartCancelled
+  models.Category:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      image:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  models.CategoryInput:
+    properties:
+      description:
+        type: string
+      image:
+        type: string
+      is_active:
+        description: pointer so "false" is distinguishable from "unset" on update
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+    type: object
+  models.CheckoutCartInput:
+    properties:
+      journal_id:
+        type: string
+      payment_method:
+        $ref: '#/definitions/models.PaymentMethod'
+    type: object
+  models.ClaimHandoffInput:
+    properties:
+      branch_id:
+        type: string
+      code:
+        type: string
+      ref:
+        type: string
+    type: object
   models.CloseJournalEntryInput:
     properties:
       cash_left:
         type: integer
       terminal_income:
         type: integer
+    type: object
+  models.CreateReviewInput:
+    properties:
+      body:
+        type: string
+      rating:
+        type: integer
+      title:
+        type: string
     type: object
   models.Customer:
     properties:
@@ -306,6 +464,15 @@ definitions:
           $ref: '#/definitions/models.Transaction'
         type: array
     type: object
+  models.HandoffSession:
+    properties:
+      claimed_at:
+        type: string
+      handoff_expires_at:
+        type: string
+      session_expires_at:
+        type: string
+    type: object
   models.IncomeHistory:
     properties:
       date:
@@ -315,8 +482,8 @@ definitions:
         description: Price of the product that was uploaded
         type: integer
       quantity:
-        description: Quantity of the product that was uploaded
-        type: integer
+        description: 'Quantity of the product that was uploaded (fractional: numeric(12,3))'
+        type: number
       supplier_id:
         description: Supplier ID
         type: string
@@ -370,6 +537,12 @@ definitions:
     properties:
       amount:
         type: integer
+      cart_id:
+        description: |-
+          CartID links a sale operation back to the sale_carts row that produced it,
+          so staff can open the operation and see the items. Set by the cart checkout
+          flow only: a keyed/manual sale has no cart and leaves this empty.
+        type: string
       description:
         type: string
       payment_method:
@@ -379,7 +552,12 @@ definitions:
       supplier_transaction:
         type: boolean
       type:
-        $ref: '#/definitions/models.TransactionType'
+        allOf:
+        - $ref: '#/definitions/models.TransactionType'
+        description: |-
+          Type here is the credit/debit direction. In Mongo it collided on the bson
+          key "type" with Transaction.Type (initiator) and was effectively dropped;
+          in Postgres it has its own column `transaction_type`.
     type: object
   models.JournalWithTransactionID:
     properties:
@@ -460,11 +638,16 @@ definitions:
       date:
         type: string
     type: object
-  models.Output-array_middleware_Activity:
+  models.OpenPOSCartInput:
+    properties:
+      branch_id:
+        type: string
+    type: object
+  models.Output-array_activities_repo_Activity:
     properties:
       data:
         items:
-          $ref: '#/definitions/middleware.Activity'
+          $ref: '#/definitions/activities_repo.Activity'
         type: array
       error:
         items:
@@ -482,11 +665,44 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-array_models_BranchAvailability:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.BranchAvailability'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-array_models_BranchFinance:
     properties:
       data:
         items:
           $ref: '#/definitions/models.BranchFinance'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Brand:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Brand'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_models_Category:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Category'
         type: array
       error:
         items:
@@ -526,11 +742,33 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-array_models_SaleCart:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.SaleCart'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-array_models_Supplier:
     properties:
       data:
         items:
           $ref: '#/definitions/models.Supplier'
+        type: array
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-array_string:
+    properties:
+      data:
+        items:
+          type: string
         type: array
       error:
         items:
@@ -550,6 +788,24 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/models.BranchFinance'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Brand:
+    properties:
+      data:
+        $ref: '#/definitions/models.Brand'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Category:
+    properties:
+      data:
+        $ref: '#/definitions/models.Category'
       error:
         items:
           $ref: '#/definitions/models.Error'
@@ -582,6 +838,69 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-models_PagedProducts:
+    properties:
+      data:
+        $ref: '#/definitions/models.PagedProducts'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_PagedReviews:
+    properties:
+      data:
+        $ref: '#/definitions/models.PagedReviews'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Product:
+    properties:
+      data:
+        $ref: '#/definitions/models.Product'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_RequestHandoffResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.RequestHandoffResponse'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_Review:
+    properties:
+      data:
+        $ref: '#/definitions/models.Review'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_SaleCart:
+    properties:
+      data:
+        $ref: '#/definitions/models.SaleCart'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.Output-models_StartHandoffSessionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/models.StartHandoffSessionResponse'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
   models.Output-models_StoreCustomer:
     properties:
       data:
@@ -609,6 +928,41 @@ definitions:
           $ref: '#/definitions/models.Error'
         type: array
     type: object
+  models.Output-models_TransactionWithDetails:
+    properties:
+      data:
+        $ref: '#/definitions/models.TransactionWithDetails'
+      error:
+        items:
+          $ref: '#/definitions/models.Error'
+        type: array
+    type: object
+  models.PagedProducts:
+    properties:
+      count:
+        type: integer
+      page:
+        type: integer
+      products:
+        items:
+          $ref: '#/definitions/models.Product'
+        type: array
+      total:
+        type: integer
+    type: object
+  models.PagedReviews:
+    properties:
+      count:
+        type: integer
+      page:
+        type: integer
+      reviews:
+        items:
+          $ref: '#/definitions/models.Review'
+        type: array
+      total:
+        type: integer
+    type: object
   models.PaymentMethod:
     enum:
     - cash
@@ -629,8 +983,21 @@ definitions:
     - PaymentMethodUndefined
   models.Product:
     properties:
+      brand:
+        allOf:
+        - $ref: '#/definitions/models.Brand'
+        description: Resolved catalog info for BrandID
+      brand_id:
+        description: Brand id (referencing the `brands` catalog collection)
+        type: string
+      categories:
+        description: Attached on read for the storefront (never persisted on the product
+          doc).
+        items:
+          $ref: '#/definitions/models.Category'
+        type: array
       category:
-        description: Product categories
+        description: Product category ids (referencing the `categories` catalog collection)
         items:
           type: string
         type: array
@@ -672,6 +1039,17 @@ definitions:
         items:
           $ref: '#/definitions/models.ProductDistribution'
         type: array
+      rating:
+        description: Average review rating (0..5), denormalized
+        type: number
+      review_count:
+        description: Number of reviews, denormalized
+        type: integer
+      reviews:
+        description: Recent reviews (product detail only)
+        items:
+          $ref: '#/definitions/models.Review'
+        type: array
       sku:
         description: Stock Keeping Unit
         type: string
@@ -681,8 +1059,11 @@ definitions:
     type: object
   models.ProductBase:
     properties:
+      brand_id:
+        description: Brand id (referencing the `brands` catalog collection)
+        type: string
       category:
-        description: Product categories
+        description: Product category ids (referencing the `categories` catalog collection)
         items:
           type: string
         type: array
@@ -717,8 +1098,10 @@ definitions:
         description: Price of the product
         type: integer
       quantity:
-        description: Quantity of the product
-        type: integer
+        description: |-
+          Fractional (product_stock.quantity is numeric(12,3)): weighted goods are
+          stocked and sold by the kilogram, so a sale can decrement 1.5 of a unit.
+        type: number
       unit:
         description: Unit of measurement (e.g. kg, pieces, etc)
         type: string
@@ -770,6 +1153,93 @@ definitions:
       phone:
         type: string
     type: object
+  models.RequestHandoffResponse:
+    properties:
+      cart:
+        $ref: '#/definitions/models.SaleCart'
+      code:
+        type: string
+      expires_at:
+        type: string
+      qr_ref:
+        type: string
+    type: object
+  models.Review:
+    properties:
+      body:
+        type: string
+      created_at:
+        type: string
+      customer_id:
+        type: string
+      customer_name:
+        type: string
+      helpful_votes:
+        type: integer
+      id:
+        type: string
+      product_id:
+        type: string
+      rating:
+        description: 1..5
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.SaleCart:
+    properties:
+      branch_id:
+        type: string
+      created_at:
+        type: string
+      finalized_at:
+        type: string
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/models.SaleCartItem'
+        type: array
+      kind:
+        $ref: '#/definitions/models.CartKind'
+      sale_journal_id:
+        type: string
+      seller_id:
+        description: 'POS: the staff user who opened the cart. Handoff: the seller
+          who claimed it.'
+        type: string
+      session:
+        allOf:
+        - $ref: '#/definitions/models.HandoffSession'
+        description: Session is the handoff satellite, attached only for Kind == CartKindHandoff.
+      state:
+        $ref: '#/definitions/models.CartState'
+      subtotal:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  models.SaleCartItem:
+    properties:
+      id:
+        type: string
+      line_total:
+        type: integer
+      name:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: number
+      sku:
+        type: string
+      unit_price:
+        type: integer
+      uom:
+        type: string
+    type: object
   models.SalesSession:
     properties:
       branch_id:
@@ -790,6 +1260,18 @@ definitions:
         type: integer
       quantity:
         type: integer
+    type: object
+  models.StartHandoffSessionInput:
+    properties:
+      branch_id:
+        type: string
+    type: object
+  models.StartHandoffSessionResponse:
+    properties:
+      cart:
+        $ref: '#/definitions/models.SaleCart'
+      session_token:
+        type: string
     type: object
   models.StoreCustomer:
     properties:
@@ -817,6 +1299,7 @@ definitions:
       address:
         type: string
       branch:
+        description: holds a branch id (FK)
         type: string
       created_at:
         type: string
@@ -842,6 +1325,7 @@ definitions:
       address:
         type: string
       branch:
+        description: holds a branch id (FK)
         type: string
       email:
         type: string
@@ -852,6 +1336,25 @@ definitions:
       notes:
         type: string
       phone:
+        type: string
+    type: object
+  models.TokenPairResponse:
+    properties:
+      access_token:
+        type: string
+      data:
+        description: = AccessToken; backward-compat alias for older clients
+        type: string
+      expires_at:
+        description: access token expiry
+        type: string
+      refresh_expires_at:
+        description: refresh token expiry
+        type: string
+      refresh_token:
+        type: string
+      token_type:
+        description: '"Bearer"'
         type: string
     type: object
   models.TokenResponse:
@@ -875,7 +1378,17 @@ definitions:
     properties:
       amount:
         type: integer
+      bnpl_id:
+        type: string
       branch_id:
+        type: string
+      cart_id:
+        description: |-
+          CartID is the type-specific reference for initiator_type='sale': the
+          sale_carts row whose items produced this transaction. It is NULL for a
+          keyed/manual sale (an amount typed straight into a journal or the sales
+          endpoint), which has no items to point at — so a null cart on a sale is
+          expected, not a broken link.
         type: string
       created_at:
         type: string
@@ -883,10 +1396,31 @@ definitions:
         type: string
       id:
         type: string
+      item_count:
+        description: |-
+          ItemCount is how many cart lines sit behind this transaction. It is NOT a
+          column — the journals repository fills it in one batched query when it
+          loads a journal's operations, so a staff list can show "12 items" without
+          expanding every cart. Zero for any transaction with no cart.
+
+          Clients decide whether a drill-in is available from CartID being non-null,
+          not from this count (a cart could legitimately be empty).
+        type: integer
+      journal_id:
+        description: |-
+          Relational foreign keys (Postgres only; not persisted in Mongo). They
+          replace journals.operations[], the embedded supplier transactions, and
+          bnpl.transactions[].
+        type: string
       payment_method:
         $ref: '#/definitions/models.PaymentMethod'
+      supplier_id:
+        type: string
       type:
-        $ref: '#/definitions/models.InitiatorType'
+        allOf:
+        - $ref: '#/definitions/models.InitiatorType'
+        description: Type here is the initiator (sale/supplier/bnpl/...). Stored in
+          `initiator_type`.
       updated_at:
         type: string
     type: object
@@ -899,7 +1433,23 @@ definitions:
       payment_method:
         $ref: '#/definitions/models.PaymentMethod'
       type:
-        $ref: '#/definitions/models.TransactionType'
+        allOf:
+        - $ref: '#/definitions/models.TransactionType'
+        description: |-
+          Type here is the credit/debit direction. In Mongo it collided on the bson
+          key "type" with Transaction.Type (initiator) and was effectively dropped;
+          in Postgres it has its own column `transaction_type`.
+    type: object
+  models.TransactionDetails:
+    properties:
+      bnpl:
+        $ref: '#/definitions/models.BNPL'
+      cart:
+        $ref: '#/definitions/models.SaleCart'
+      kind:
+        $ref: '#/definitions/models.InitiatorType'
+      supplier:
+        $ref: '#/definitions/models.Supplier'
     type: object
   models.TransactionOutput:
     properties:
@@ -934,12 +1484,78 @@ definitions:
     x-enum-varnames:
     - TransactionTypeCredit
     - TransactionTypeDebit
+  models.TransactionWithDetails:
+    properties:
+      amount:
+        type: integer
+      bnpl_id:
+        type: string
+      branch_id:
+        type: string
+      cart_id:
+        description: |-
+          CartID is the type-specific reference for initiator_type='sale': the
+          sale_carts row whose items produced this transaction. It is NULL for a
+          keyed/manual sale (an amount typed straight into a journal or the sales
+          endpoint), which has no items to point at — so a null cart on a sale is
+          expected, not a broken link.
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      details:
+        $ref: '#/definitions/models.TransactionDetails'
+      id:
+        type: string
+      item_count:
+        description: |-
+          ItemCount is how many cart lines sit behind this transaction. It is NOT a
+          column — the journals repository fills it in one batched query when it
+          loads a journal's operations, so a staff list can show "12 items" without
+          expanding every cart. Zero for any transaction with no cart.
+
+          Clients decide whether a drill-in is available from CartID being non-null,
+          not from this count (a cart could legitimately be empty).
+        type: integer
+      journal_id:
+        description: |-
+          Relational foreign keys (Postgres only; not persisted in Mongo). They
+          replace journals.operations[], the embedded supplier transactions, and
+          bnpl.transactions[].
+        type: string
+      payment_method:
+        $ref: '#/definitions/models.PaymentMethod'
+      supplier_id:
+        type: string
+      type:
+        allOf:
+        - $ref: '#/definitions/models.InitiatorType'
+        description: Type here is the initiator (sale/supplier/bnpl/...). Stored in
+          `initiator_type`.
+      updated_at:
+        type: string
+    type: object
   models.UpdateProfileInput:
     properties:
       name:
         type: string
       phone:
         type: string
+    type: object
+  models.UpdateReviewInput:
+    properties:
+      body:
+        type: string
+      rating:
+        type: integer
+      title:
+        type: string
+    type: object
+  models.UpdateSaleCartItemInput:
+    properties:
+      quantity:
+        type: number
     type: object
   models.UserRegisterInput:
     properties:
@@ -952,9 +1568,26 @@ definitions:
       phone:
         type: string
       role:
-        type: string
+        $ref: '#/definitions/models.UserRole'
       username:
         type: string
+    type: object
+  models.UserRole:
+    enum:
+    - admin
+    - staff
+    - manager
+    - user
+    type: string
+    x-enum-varnames:
+    - UserRoleAdmin
+    - UserRoleStaff
+    - UserRoleManager
+    - UserRoleUser
+  models.VoteReviewInput:
+    properties:
+      helpful:
+        type: boolean
     type: object
   products.NewIncomeInput:
     properties:
@@ -965,8 +1598,8 @@ definitions:
         description: Price of the product that was uploaded
         type: integer
       quantity:
-        description: Quantity of the product that was uploaded
-        type: integer
+        description: 'Quantity of the product that was uploaded (fractional: numeric(12,3))'
+        type: number
       selling_price:
         type: integer
       supplier_id:
@@ -1063,7 +1696,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-array_middleware_Activity'
+            $ref: '#/definitions/models.Output-array_activities_repo_Activity'
         "500":
           description: Internal Server Error
           schema:
@@ -1082,7 +1715,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Output-array_middleware_Activity'
+            $ref: '#/definitions/models.Output-array_activities_repo_Activity'
         "500":
           description: Internal Server Error
           schema:
@@ -1096,7 +1729,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticate user and return a token
+      description: Authenticate user and return an access + refresh token pair
       parameters:
       - description: User credentials
         in: body
@@ -1108,9 +1741,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: token
+          description: access + refresh tokens
           schema:
-            $ref: '#/definitions/models.TokenResponse'
+            $ref: '#/definitions/models.TokenPairResponse'
         "401":
           description: Unauthorized
           schema:
@@ -1139,6 +1772,44 @@ paths:
       security:
       - BearerAuth: []
       summary: Get user info
+      tags:
+      - auth
+  /api/v1/admin/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Exchange a valid refresh token for a brand-new access + refresh
+        token pair (the old refresh token is rotated out). This endpoint is NOT guarded
+        by the access-token middleware — it authenticates via the refresh token in
+        the body. Once the refresh token itself expires the request is rejected with
+        401 and the user must log in again.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RefreshInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: new access + refresh tokens
+          schema:
+            $ref: '#/definitions/models.TokenPairResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Refresh the token pair
       tags:
       - auth
   /api/v1/admin/bnpl:
@@ -1296,6 +1967,274 @@ paths:
       summary: Get BNPLs of branch
       tags:
       - BNPL
+  /api/v1/admin/catalog/brands:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Brand'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List all catalog brands
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Brand details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BrandInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Brand'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Create a catalog brand
+      tags:
+      - catalog
+  /api/v1/admin/catalog/brands/{id}:
+    delete:
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete a catalog brand
+      tags:
+      - catalog
+    get:
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Brand'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a catalog brand by id
+      tags:
+      - catalog
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Brand ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Brand fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BrandInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Brand'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a catalog brand
+      tags:
+      - catalog
+  /api/v1/admin/catalog/categories:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Category'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List all catalog categories (including inactive)
+      tags:
+      - catalog
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Category details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CategoryInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Create a catalog category
+      tags:
+      - catalog
+  /api/v1/admin/catalog/categories/{id}:
+    delete:
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Delete a catalog category
+      tags:
+      - catalog
+    get:
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a catalog category by id
+      tags:
+      - catalog
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Category fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CategoryInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a catalog category
+      tags:
+      - catalog
   /api/v1/admin/customers:
     get:
       consumes:
@@ -1645,6 +2584,174 @@ paths:
       summary: Fetch finance by ID
       tags:
       - finance
+  /api/v1/admin/handoff/carts/{id}:
+    get:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a cart (handoff or POS) by id
+      tags:
+      - handoff
+  /api/v1/admin/handoff/carts/{id}/cancel:
+    post:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Cancel a cart (claimed handoff cart, or the seller's own POS cart)
+      tags:
+      - handoff
+  /api/v1/admin/handoff/carts/{id}/checkout:
+    post:
+      consumes:
+      - application/json
+      description: Requires the handoff.checkout capability and an Idempotency-Key
+        header. Records the sale on the seller's OPEN shift journal at the cart's
+        branch, then decrements branch stock by each line's quantity. A handoff cart
+        must be claimed by the caller; a POS cart must be theirs and still active.
+        Replaying the same idempotency key returns the completed cart without charging
+        or decrementing again.
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Idempotency key
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Open journal + payment method
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckoutCartInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Charge a cart (delegates to the sale flow and decrements stock)
+      tags:
+      - handoff
+  /api/v1/admin/handoff/carts/{id}/release:
+    post:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Release a claimed cart back to ready_for_handoff
+      tags:
+      - handoff
+  /api/v1/admin/handoff/claim:
+    post:
+      consumes:
+      - application/json
+      description: Idempotent. The handoff token alone identifies the cart. Requires
+        the handoff.claim capability.
+      parameters:
+      - description: Handoff QR ref or 8-digit code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ClaimHandoffInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Claim a cart by its handoff token (freezes customer edits)
+      tags:
+      - handoff
   /api/v1/admin/journals:
     post:
       consumes:
@@ -1970,6 +3077,202 @@ paths:
       summary: Get a report
       tags:
       - journals
+  /api/v1/admin/pos/carts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: List the seller's open till carts
+      tags:
+      - pos
+    post:
+      consumes:
+      - application/json
+      description: 'Replaces the old Redis-backed sales session: the cart is a durable
+        row, so a till recovers its basket after a reload or restart. Branch defaults
+        to the authenticated seller''s branch.'
+      parameters:
+      - description: Optional branch override
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/models.OpenPOSCartInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Open a till cart at the seller's branch
+      tags:
+      - pos
+  /api/v1/admin/pos/carts/{id}/cancel:
+    post:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Abandon a till cart
+      tags:
+      - pos
+  /api/v1/admin/pos/carts/{id}/items:
+    post:
+      consumes:
+      - application/json
+      description: Quantity is fractional, so weighed goods can be sold by the kilogram.
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Product + quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddSaleCartItemInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Add a scanned line to a till cart
+      tags:
+      - pos
+  /api/v1/admin/pos/carts/{id}/items/{item_id}:
+    delete:
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Remove a line from a till cart
+      tags:
+      - pos
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Cart ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      - description: New quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSaleCartItemInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Update a till cart line's quantity (0 removes it)
+      tags:
+      - pos
   /api/v1/admin/products:
     get:
       description: Query products based on various parameters
@@ -2951,6 +4254,36 @@ paths:
       summary: Update a transaction by ID
       tags:
       - transactions
+  /api/v1/admin/transactions/{id}/details:
+    get:
+      description: 'Returns the transaction plus a discriminated `details` object
+        resolved from its initiator type: the cart and its items for a sale, the supplier
+        for a supplier transaction, the BNPL record for a BNPL one. Types with no
+        detail record of their own (salary, rent, utilities, other) return `details`
+        with only `kind` set — as does a sale that has no cart, such as a keyed amount.
+        Switch on `details.kind` in the client.'
+      parameters:
+      - description: Transaction ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_TransactionWithDetails'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      security:
+      - BearerAuth: []
+      summary: Get a transaction with its type-specific details
+      tags:
+      - transactions
   /api/v1/admin/transactions/{transaction_id}:
     get:
       consumes:
@@ -3106,6 +4439,260 @@ paths:
       summary: Get all transaction types
       tags:
       - transactions
+  /api/v1/handoff/cart:
+    get:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Get the current handoff cart
+      tags:
+      - handoff
+  /api/v1/handoff/cart/cancel:
+    post:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Cancel the current handoff cart
+      tags:
+      - handoff
+  /api/v1/handoff/cart/items:
+    post:
+      consumes:
+      - application/json
+      description: Quantity is fractional, so weighed goods can be sold by the kilogram.
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      - description: Product + quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddSaleCartItemInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Add a scanned product line to the cart
+      tags:
+      - handoff
+  /api/v1/handoff/cart/items/{item_id}:
+    delete:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      - description: Item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Remove a line from the cart
+      tags:
+      - handoff
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      - description: Item ID
+        in: path
+        name: item_id
+        required: true
+        type: string
+      - description: New quantity
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSaleCartItemInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_SaleCart'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Update a cart line's quantity (0 removes it)
+      tags:
+      - handoff
+  /api/v1/handoff/cart/request-handoff:
+    post:
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_RequestHandoffResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Request checkout — mint a handoff token (QR + 8-digit code)
+      tags:
+      - handoff
+  /api/v1/handoff/cart/session:
+    delete:
+      description: Hard-deletes the cart identified by the session token, cascading
+        its items and its handoff session row. The session token dies with the row,
+        so the X-Handoff-Session header the client cached stops resolving immediately
+        — clients MUST drop it from their local store on a 204. Unlike /cart/cancel
+        (which keeps the cart in a cancelled state), nothing is retained. A token
+        that is unknown or already deleted is 404.
+      parameters:
+      - description: Session token
+        in: header
+        name: X-Handoff-Session
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Session deleted; discard the cached session header
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Delete the current handoff session
+      tags:
+      - handoff
+  /api/v1/handoff/sessions:
+    post:
+      consumes:
+      - application/json
+      description: Creates a server-side cart and returns its one-time session token.
+      parameters:
+      - description: Branch from the entry QR
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.StartHandoffSessionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_StartHandoffSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+      summary: Start a Scan & Go session (scoped to the entry-QR branch)
+      tags:
+      - handoff
   /api/v1/store/account/addresses:
     get:
       produces:
@@ -3481,8 +5068,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Brand'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List brands / manufacturers
@@ -3493,8 +5084,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Category'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List catalog categories
@@ -3511,8 +5106,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Category'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a category by id
@@ -3526,11 +5125,23 @@ paths:
         name: id
         required: true
         type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedProducts'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List products in a category
@@ -3538,17 +5149,53 @@ paths:
       - store-catalog
   /api/v1/store/catalog/search:
     get:
-      description: Full-text search with filters, facets, sort and pagination
+      description: Full-text-ish search with filters, sort and pagination over products
       parameters:
       - description: Search query
         in: query
         name: q
         type: string
+      - description: Category id
+        in: query
+        name: category
+        type: string
+      - description: Brand id
+        in: query
+        name: brand
+        type: string
+      - description: Minimum price
+        in: query
+        name: price_min
+        type: number
+      - description: Maximum price
+        in: query
+        name: price_max
+        type: number
+      - description: Sort (newest, name_asc, name_desc, rating_desc, price_asc, price_desc)
+        in: query
+        name: sort
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedProducts'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Search the catalog
@@ -3677,8 +5324,34 @@ paths:
       - store-orders
   /api/v1/store/products:
     get:
-      description: List products with filter/sort/pagination
+      description: |-
+        List products with filter/sort/pagination. Each product carries
+        its attached catalog info (categories + brand) and review aggregates.
       parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Category id
+        in: query
+        name: category
+        type: string
+      - description: Brand id
+        in: query
+        name: brand
+        type: string
+      - description: Minimum price
+        in: query
+        name: price_min
+        type: number
+      - description: Maximum price
+        in: query
+        name: price_max
+        type: number
+      - description: Sort (newest, name_asc, name_desc, rating_desc, price_asc, price_desc)
+        in: query
+        name: sort
+        type: string
       - description: Page number
         in: query
         name: page
@@ -3690,8 +5363,16 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedProducts'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List storefront products
@@ -3699,6 +5380,9 @@ paths:
       - store-products
   /api/v1/store/products/{id}:
     get:
+      description: |-
+        Returns the product with its catalog info (categories + brand) and
+        a handful of recent reviews attached.
       parameters:
       - description: Product ID
         in: path
@@ -3708,8 +5392,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Product'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a storefront product by id
@@ -3726,8 +5414,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_BranchAvailability'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a product's stock availability per branch
@@ -3744,8 +5436,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_string'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get a product's images
@@ -3759,11 +5455,19 @@ paths:
         name: id
         required: true
         type: string
+      - description: Max related products
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-array_models_Product'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: Get related / recommended products
@@ -3777,28 +5481,56 @@ paths:
         name: id
         required: true
         type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_PagedReviews'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       summary: List reviews for a product (public)
       tags:
       - store-products
     post:
+      consumes:
+      - application/json
       parameters:
       - description: Product ID
         in: path
         name: id
         required: true
         type: string
+      - description: Review details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateReviewInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Output-models_Review'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3879,8 +5611,12 @@ paths:
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_MessageResponse'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3889,17 +5625,33 @@ paths:
       tags:
       - store-reviews
     put:
+      consumes:
+      - application/json
       parameters:
       - description: Review ID
         in: path
         name: id
         required: true
         type: string
+      - description: Review fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateReviewInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Review'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorOutput'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:
@@ -3909,17 +5661,29 @@ paths:
       - store-reviews
   /api/v1/store/reviews/{id}/vote:
     post:
+      consumes:
+      - application/json
       parameters:
       - description: Review ID
         in: path
         name: id
         required: true
         type: string
+      - description: Vote
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.VoteReviewInput'
       produces:
       - application/json
       responses:
-        "501":
-          description: Not Implemented
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Output-models_Review'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/models.ErrorOutput'
       security:

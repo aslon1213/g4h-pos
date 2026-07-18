@@ -2,25 +2,23 @@ package proxy
 
 import "github.com/gofiber/fiber/v2"
 
-
 type ProxyTypes string
 
 const (
 	REDIRECT ProxyTypes = "redirect"
-	PROXY ProxyTypes = "proxy"
+	PROXY    ProxyTypes = "proxy"
 )
 
 type ProxyRule struct {
-	SourceDomain string 
+	SourceDomain string
 	TargetDomain string
-	SourcePath string
-	TargetPath string
-	Method ProxyTypes
+	SourcePath   string
+	TargetPath   string
+	Method       ProxyTypes
 }
 
 type ProxyController struct {
 	ProxyRules []*ProxyRule
-
 }
 
 func (r *ProxyRule) Matches(ctx *fiber.Ctx) bool {

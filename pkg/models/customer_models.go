@@ -3,21 +3,23 @@ package models
 import "time"
 
 type CustomerBase struct {
-	Name  string `json:"name" bson:"name"`
-	Phone string `json:"phone" bson:"phone"`
+	Name  string `json:"name" bson:"name" gorm:"column:name"`
+	Phone string `json:"phone" bson:"phone" gorm:"column:phone"`
 	// Email   string `json:"email" bson:"email"`
-	Address        string            `json:"address" bson:"address"`
-	AdditionalInfo map[string]string `json:"additional_info" bson:"additional_info"`
+	Address        string            `json:"address" bson:"address" gorm:"column:address"`
+	AdditionalInfo map[string]string `json:"additional_info" bson:"additional_info" gorm:"column:additional_info;serializer:json"`
 }
 
 type Customer struct {
-	CustomerBase    `bson:",inline"`
-	ID              string         `json:"id" bson:"_id"`
-	BNPLs           []BNPL         `json:"bnpls" bson:"bnpls"`
-	PurchaseHistory []SalesSession `json:"purchase_history" bson:"purchase_history"` // purchase history is updated when a customer a sales session or completes a BNPL session
-	CreatedAt       time.Time      `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at" bson:"updated_at"`
+	CustomerBase    `bson:",inline" gorm:"embedded"`
+	ID              string         `json:"id" bson:"_id" gorm:"column:id;primaryKey"`
+	BNPLs           []BNPL         `json:"bnpls" bson:"bnpls" gorm:"-"`
+	PurchaseHistory []SalesSession `json:"purchase_history" bson:"purchase_history" gorm:"column:purchase_history;serializer:json"` // purchase history is updated when a customer a sales session or completes a BNPL session
+	CreatedAt       time.Time      `json:"created_at" bson:"created_at" gorm:"column:created_at"`
+	UpdatedAt       time.Time      `json:"updated_at" bson:"updated_at" gorm:"column:updated_at"`
 }
+
+func (Customer) TableName() string { return "customers" }
 
 type CustomerQueryOutputData struct {
 	Customers []Customer `json:"customers" bson:"customers"`

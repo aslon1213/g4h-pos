@@ -4,27 +4,27 @@ import (
 	"net/url"
 
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 	financerepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/finance"
 
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // FinanceController exposes the admin finance endpoints. All database access
 // goes through Repo; the controller parses requests, logs audit activity, and
 // renders the response envelope.
 type FinanceController struct {
-	Repo                 *financerepo.FinanceRepository
-	ActivitiesCollection *mongo.Collection
+	Repo           *financerepo.FinanceRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
 }
 
-func New(db *mongo.Database) *FinanceController {
+func New(db *gorm.DB) *FinanceController {
 	log.Info().Msg("Initializing FinanceController")
 	return &FinanceController{
-		Repo:                 financerepo.New(db),
-		ActivitiesCollection: db.Collection("activities"),
+		Repo:           financerepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
 	}
 }
 
@@ -113,7 +113,7 @@ func (f *FinanceController) NewFinanceOfBranch(c *fiber.Ctx) error {
 		return models.RespondRepoError(c, err)
 	}
 
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateFinance, branch, f.ActivitiesCollection)
+	f.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateFinance, branch)
 	log.Debug().Str("branch_id", branch.BranchID).Msg("Successfully created new branch finance")
 	return c.Status(fiber.StatusCreated).JSON(models.NewOutput(branch))
 }

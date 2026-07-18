@@ -7,11 +7,13 @@ import (
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/analytics"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/arrivals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/auth"
+	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/catalog"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/customers/bnpl"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/finance"
 	journal_handlers "github.com/aslon1213/g4h_pos_erp/pkg/controllers/journals"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/products"
+	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/salecart"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/sales"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/store"
 	"github.com/aslon1213/g4h_pos_erp/pkg/controllers/suppliers"
@@ -21,7 +23,7 @@ import (
 	pasetoware "github.com/gofiber/contrib/paseto"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 type Controllers struct {
@@ -32,6 +34,7 @@ type Controllers struct {
 	Journals     *journal_handlers.JournalHandlers
 	Operations   *journal_handlers.OperationHandlers
 	Products     *products.ProductsController
+	Catalog      *catalog.CatalogController
 	Auth         *auth.AuthControllers
 	BNPL         *bnpl.BNPLController
 	Customers    *customers.CustomersController
@@ -39,9 +42,11 @@ type Controllers struct {
 	Dashboard    *analytics.DashboardHandler
 	Proposals    *arrivals.ProposalsHandlers
 	Store        *store.Controllers
+	HandOffCart  *salecart.Controllers
 }
 
-func NewControllers(db *mongo.Database) *Controllers {
+// NewControllers builds every controller from the PostgreSQL (GORM) handle.
+func NewControllers(db *gorm.DB) *Controllers {
 	log.Debug().Msg("Initializing new controllers")
 	middleware := middleware.New(db)
 	controllers := &Controllers{
@@ -52,6 +57,7 @@ func NewControllers(db *mongo.Database) *Controllers {
 		Journals:     journal_handlers.New(db),
 		Operations:   journal_handlers.NewOperationsHandler(db),
 		Products:     products.New(db),
+		Catalog:      catalog.New(db),
 		Auth:         auth.New(db),
 		Customers:    customers.New(db),
 		BNPL:         bnpl.New(db),
@@ -59,6 +65,7 @@ func NewControllers(db *mongo.Database) *Controllers {
 		Dashboard:    analytics.New(db),
 		Proposals:    arrivals.New(db),
 		Store:        store.New(db),
+		HandOffCart:  salecart.New(db),
 	}
 	log.Debug().Msg("Controllers initialized successfully")
 	return controllers
@@ -85,6 +92,11 @@ func SetupRoutes(app *fiber.App, controllers *Controllers) {
 	// routes get no guard; protected ones get their own customer-token guard below.
 	routes.StorePublicRoutes(app, controllers.Store, controllers.Middlewares)
 	log.Debug().Msg("Store public routes set up successfully")
+
+	// Customer Scan & Go surface — session-token authenticated, so (like the store
+	// public routes) it must be registered before the /api staff guard below.
+	routes.HandOffCartCustomerRoutes(app, controllers.HandOffCart, controllers.Middlewares)
+	log.Debug().Msg("Handoff customer routes set up successfully")
 
 	app.Group("/api/v1/store", pasetoware.New(
 		pasetoware.Config{
@@ -118,6 +130,8 @@ func SetupRoutes(app *fiber.App, controllers *Controllers) {
 	log.Debug().Msg("Journals routes set up successfully")
 	routes.ProductsRoutes(app, controllers.Products, controllers.Middlewares)
 	log.Debug().Msg("Products routes set up successfully")
+	routes.CatalogRoutes(app, controllers.Catalog, controllers.Middlewares)
+	log.Debug().Msg("Catalog routes set up successfully")
 	routes.CustomerRoutes(app, controllers.Customers, controllers.Middlewares)
 	log.Debug().Msg("Customer routes set up successfully")
 	routes.BNPLRoutes(app, controllers.BNPL, controllers.Middlewares)
@@ -128,5 +142,9 @@ func SetupRoutes(app *fiber.App, controllers *Controllers) {
 	log.Debug().Msg("Proxy routes set up successfully")
 	routes.ProposalsRoutes(app, controllers.Proposals, controllers.Middlewares)
 	log.Debug().Msg("Proposals routes set up successfully")
+	// Seller Scan & Go surface — under the staff guard, capability + branch scoped.
+	routes.HandOffCartSellerRoutes(app, controllers.HandOffCart, controllers.Middlewares)
+	routes.POSCartRoutes(app, controllers.HandOffCart, controllers.Middlewares)
+	log.Debug().Msg("Handoff seller routes set up successfully")
 	log.Debug().Msg("All routes set up successfully")
 }

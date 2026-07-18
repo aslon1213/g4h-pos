@@ -22,11 +22,11 @@ import (
 	_ "github.com/aslon1213/g4h_pos_erp/docs"
 	"github.com/go-playground/validator/v10"
 
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	stdout "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"gorm.io/gorm"
 )
 
 // @title G4H ERP/POS API
@@ -42,7 +42,8 @@ import (
 type App struct {
 	Logger *zerolog.Logger
 	// Cache  *cache.Cache
-	DB     *mongo.Client
+	// PgDB is the PostgreSQL (GORM) handle fanned out to every controller.
+	PgDB   *gorm.DB
 	Config *configs.Config
 	Router *fiber.App
 }
@@ -134,7 +135,7 @@ func New() *App {
 	return &App{
 		Logger: logger.SetupLogger(),
 		// Cache:  cache.New(),
-		DB:     database.NewDB(),
+		PgDB:   database.NewGormDB(),
 		Router: NewFiberApp(),
 		Config: config,
 	}
@@ -160,7 +161,7 @@ func initTracer() *sdktrace.TracerProvider {
 }
 
 func (a *App) Run() {
-	controllers := NewControllers(a.DB.Database(a.Config.DB.Database))
+	controllers := NewControllers(a.PgDB)
 	SetupRoutes(a.Router, controllers)
 	a.Router.Listen(a.Config.Server.Port)
 }

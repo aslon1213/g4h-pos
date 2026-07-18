@@ -1,9 +1,11 @@
 // Package bnpl is the repository for the admin BNPL (buy-now-pay-later) domain.
-// BNPLs are embedded on the `customers` documents; a credit payment additionally
-// records a transaction and reflects it on the owning branch's finance balances.
-// It owns every mongo/bson interaction for the BNPL controller, mirroring the
-// suppliers and finance repositories: the controller holds a *BNPLRepository and
-// its handlers call these methods instead of touching collections directly.
+// Under Postgres a BNPL is its own row in the `bnpls` table (no longer embedded
+// on the customer): its products live in `bnpl_products` and its payments are
+// `transactions` rows carrying the bnpl_id foreign key. A credit payment records
+// a transaction and reflects it on the owning branch's finance balances. It owns
+// every gorm/Postgres interaction for the BNPL controller, mirroring the other
+// ported repositories: the controller holds a *BNPLRepository and its handlers
+// call these methods instead of touching the database directly.
 package bnpl
 
 import (
@@ -13,305 +15,279 @@ import (
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
-	"github.com/aslon1213/g4h_pos_erp/platform/database"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
-// BNPLRepository owns the customers, transactions and finance collections.
-// BNPLs live as an array on each customer document; transactions and finance are
-// needed when a credit payment is recorded against a BNPL.
+// BNPLRepository owns the bnpls, bnpl_products, transactions and branch_finance
+// tables. branch_finance is touched when a credit payment is recorded.
 type BNPLRepository struct {
-	customers    *mongo.Collection
-	transactions *mongo.Collection
-	finance      *mongo.Collection
+	db *gorm.DB
 }
 
 // New builds the repository.
-func New(db *mongo.Database) *BNPLRepository {
-	return &BNPLRepository{
-		customers:    db.Collection("customers"),
-		transactions: db.Collection("transactions"),
-		finance:      db.Collection("finance"),
-	}
+func New(db *gorm.DB) *BNPLRepository {
+	return &BNPLRepository{db: db}
 }
 
 // CustomerExists reports whether a customer with the given id exists, returning
 // repoerr.ErrNotFound when it does not.
 func (r *BNPLRepository) CustomerExists(ctx context.Context, customerID string) error {
-	customer := &models.Customer{}
-	err := r.customers.FindOne(ctx, bson.M{"_id": customerID}).Decode(customer)
-	if errors.Is(err, mongo.ErrNoDocuments) {
-		return repoerr.ErrNotFound
-	}
+	count, err := gorm.G[models.Customer](r.db).Where("id = ?", customerID).Count(ctx, "id")
 	if err != nil {
 		return err
+	}
+	if count == 0 {
+		return repoerr.ErrNotFound
 	}
 	return nil
 }
 
-// Create builds a new BNPL (with the provided total amount) and pushes it onto
-// the customer's `bnpls` array. The caller is responsible for resolving the
-// total amount; this method only persists. Returns the created BNPL.
+// Create inserts a new BNPL row (with the provided total amount) plus one
+// bnpl_products row per product, atomically in a single gorm transaction. The
+// caller is responsible for resolving the total amount; this method only
+// persists. Returns the created BNPL.
 func (r *BNPLRepository) Create(ctx context.Context, customerID, branchID string, totalAmount int32, products map[string]models.SalesSessionItem) (*models.BNPL, error) {
+	now := time.Now()
 	bnpl := &models.BNPL{
 		ID:           uuid.New().String(),
 		CustomerID:   customerID,
+		BranchID:     branchID,
 		TotalAmount:  totalAmount,
 		PaidAmount:   0,
 		Products:     products,
 		Status:       models.BNPLStatusActive,
 		Transactions: []string{},
-		BranchID:     branchID,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
-	_, err := r.customers.UpdateOne(ctx, bson.M{"_id": customerID}, bson.M{"$push": bson.M{"bnpls": bnpl}})
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := gorm.G[models.BNPL](tx).Create(ctx, bnpl); err != nil {
+			return err
+		}
+		if len(products) > 0 {
+			items := make([]models.BnplProduct, 0, len(products))
+			for productID, item := range products {
+				items = append(items, models.BnplProduct{
+					BnplID:    bnpl.ID,
+					ProductID: productID,
+					Quantity:  item.Quantity,
+					Price:     item.Price,
+				})
+			}
+			if err := gorm.G[models.BnplProduct](tx).CreateInBatches(ctx, &items, len(items)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
+	log.Info().Str("bnpl_id", bnpl.ID).Msg("Created new BNPL")
 	return bnpl, nil
 }
 
-// GetByID returns a single BNPL by its id, extracted from whichever customer
-// holds it. Mirrors the controller's aggregation pipeline exactly.
+// GetByID returns a single BNPL by its id, with its products and transaction ids
+// attached. Returns repoerr.ErrNotFound when no such BNPL exists.
 func (r *BNPLRepository) GetByID(ctx context.Context, bnplID string) (*models.BNPL, error) {
-	log.Debug().Str("bnpl_id", bnplID).Msg("Getting BNPL from database")
-
-	pipeline := mongo.Pipeline{
-		bson.D{
-			{Key: "$match", Value: bson.D{
-				{Key: "bnpls.id", Value: bnplID},
-			}},
-		},
-		bson.D{
-			{Key: "$project", Value: bson.D{
-				{Key: "bnpl", Value: bson.D{
-					{Key: "$first", Value: bson.D{
-						{Key: `$filter`, Value: bson.D{
-							{Key: "input", Value: `$bnpls`},
-							{Key: "as", Value: "b"},
-							{Key: "cond", Value: bson.D{
-								{Key: "$eq", Value: bson.A{"$$b.id", bnplID}},
-							}},
-						}},
-					}},
-				}},
-				{Key: "_id", Value: 0},
-			}},
-		},
-	}
-
-	cursor, err := r.customers.Aggregate(ctx, pipeline)
-	if err != nil {
-		log.Error().Err(err).Str("bnpl_id", bnplID).Msg("Failed to find BNPL in database")
-		return nil, err
-	}
-
-	type PipelineResult struct {
-		BNPL models.BNPL `bson:"bnpl"`
-	}
-	var output []PipelineResult
-
-	err = cursor.All(ctx, &output)
-	if err != nil {
-		log.Error().Err(err).Str("bnpl_id", bnplID).Msg("Failed to decode BNPL from database")
-		return nil, err
-	}
-
-	if len(output) == 0 {
+	bnpl, err := gorm.G[models.BNPL](r.db).Where("id = ?", bnplID).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
-
-	log.Debug().Interface("output", output).Str("bnpl_id", bnplID).Msg("Successfully retrieved BNPL from database")
-	return &output[0].BNPL, nil
+	if err != nil {
+		return nil, err
+	}
+	if err := r.attachChildren(ctx, r.db, &bnpl); err != nil {
+		return nil, err
+	}
+	return &bnpl, nil
 }
 
-// Delete pulls the BNPL with the given id off whichever customer holds it.
+// Delete removes the BNPL with the given id. Its bnpl_products rows cascade via
+// the foreign key. Mirrors the original behaviour of not erroring when nothing
+// matched.
 func (r *BNPLRepository) Delete(ctx context.Context, bnplID string) error {
-	_, err := r.customers.UpdateOne(
-		ctx,
-		bson.M{
-			"bnpls.id": bnplID,
-		},
-		bson.M{
-			"$pull": bson.M{
-				"bnpls": bson.M{"id": bnplID},
-			},
-		},
-	)
-	if err != nil {
+	if _, err := gorm.G[models.BNPL](r.db).Where("id = ?", bnplID).Delete(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-// GetCustomerBNPLs returns the BNPLs embedded on a customer. When branchID is
-// non-empty the customer is additionally required to hold a BNPL on that branch
-// (mirroring the controller filter). Returns repoerr.ErrNotFound when no
-// matching customer exists.
+// GetCustomerBNPLs returns all BNPLs of a customer (each with products and
+// transaction ids attached). When branchID is non-empty the customer is
+// additionally required to hold a BNPL on that branch (mirroring the original
+// filter). Returns repoerr.ErrNotFound when no matching customer/branch exists.
 func (r *BNPLRepository) GetCustomerBNPLs(ctx context.Context, customerID, branchID string) ([]models.BNPL, error) {
-	customer := &models.Customer{}
-	query := bson.M{"_id": customerID}
-	if branchID != "" {
-		query["bnpls.branch_id"] = branchID
+	count, err := gorm.G[models.Customer](r.db).Where("id = ?", customerID).Count(ctx, "id")
+	if err != nil {
+		return nil, err
 	}
-	err := r.customers.FindOne(ctx, query).Decode(customer)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	if count == 0 {
 		return nil, repoerr.ErrNotFound
 	}
-	if err != nil {
-		return nil, err
+	if branchID != "" {
+		bcount, err := gorm.G[models.BNPL](r.db).
+			Where("customer_id = ? AND branch_id = ?", customerID, branchID).Count(ctx, "id")
+		if err != nil {
+			return nil, err
+		}
+		if bcount == 0 {
+			return nil, repoerr.ErrNotFound
+		}
 	}
-	return customer.BNPLs, nil
+	return r.bnplsForCustomer(ctx, r.db, customerID)
 }
 
-// GetBranchBNPLs returns the customers holding BNPLs on the given branch,
-// optionally filtered by customer name/phone/address (case-insensitive regex).
-// Mirrors the controller's aggregation pipeline exactly.
+// GetBranchBNPLs returns the customers holding BNPLs on the given branch (each
+// customer with its BNPLs attached), optionally filtered by customer
+// name/phone/address (case-insensitive ILIKE substring match).
 func (r *BNPLRepository) GetBranchBNPLs(ctx context.Context, branchID, customerName, customerPhone, customerAddress string) ([]models.Customer, error) {
-	query := mongo.Pipeline{
-		bson.D{
-			{Key: "$match", Value: bson.D{
-				{Key: "bnpls.branch_id", Value: branchID},
-			}},
-		},
-	}
+	query := gorm.G[models.Customer](r.db).
+		Where("id IN (SELECT customer_id FROM bnpls WHERE branch_id = ?)", branchID)
 	if customerName != "" {
-		query = append(query, bson.D{
-			{Key: "$match", Value: bson.D{
-				{Key: "name", Value: bson.D{
-					{Key: "$regex", Value: customerName},
-					{Key: "$options", Value: "i"},
-				}},
-			}},
-		})
+		query = query.Where("name ILIKE ?", "%"+customerName+"%")
 	}
 	if customerPhone != "" {
-		query = append(query, bson.D{
-			{Key: "$match", Value: bson.D{
-				{Key: "phone", Value: bson.D{
-					{Key: "$regex", Value: customerPhone},
-					{Key: "$options", Value: "i"},
-				}},
-			}},
-		})
+		query = query.Where("phone ILIKE ?", "%"+customerPhone+"%")
 	}
 	if customerAddress != "" {
-		query = append(query, bson.D{
-			{Key: "$match", Value: bson.D{
-				{Key: "address", Value: bson.D{
-					{Key: "$regex", Value: customerAddress},
-					{Key: "$options", Value: "i"},
-				}},
-			}},
-		})
+		query = query.Where("address ILIKE ?", "%"+customerAddress+"%")
 	}
 
-	cursor, err := r.customers.Aggregate(ctx, query)
+	customers, err := query.Find(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var output []models.Customer
-	if err := cursor.All(ctx, &output); err != nil {
-		return nil, err
+	for i := range customers {
+		bnpls, err := r.bnplsForCustomer(ctx, r.db, customers[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		customers[i].BNPLs = bnpls
 	}
-	return output, nil
+	return customers, nil
 }
 
 // Credit applies a credit payment of `amount` (in the given payment method)
-// against the BNPL identified by bnplID, atomically in a MongoDB multi-document
-// transaction (requires a replica set). It records a transaction, increments the
-// owning branch's cash balance, and updates the embedded BNPL's paid amount and
-// status (completed when fully paid, otherwise active). Returns the updated BNPL.
+// against the BNPL identified by bnplID, atomically in a single gorm
+// transaction. It records a transaction carrying the bnpl_id, increments the
+// owning branch's cash balance, and updates the BNPL's paid amount and status
+// (completed when fully paid, otherwise active). Returns the updated BNPL.
 //
-// Money/accounting math and filters are preserved byte-for-byte from the
-// controller; a missing branch surfaces as repoerr.ErrNotFound.
+// The money math is preserved from the original: the branch's cash bucket is
+// always the one credited, regardless of the payment method. A missing branch
+// surfaces as repoerr.ErrNotFound.
 func (r *BNPLRepository) Credit(ctx context.Context, bnplID string, amount int, paymentMethod string) (*models.BNPL, error) {
-	session, sessCtx, err := database.StartTransaction(r.customers.Database().Client())
-	if err != nil {
-		return nil, err
-	}
-	defer session.EndSession(sessCtx)
+	var updated *models.BNPL
 
-	transaction := models.TransactionBase{
-		Amount:        uint32(amount),
-		Description:   "Credit BNPL",
-		Type:          models.TransactionTypeCredit,
-		PaymentMethod: models.PaymentMethod(paymentMethod),
-	}
-
-	// get the BNPL from the customers collection
-	bnpl, err := r.GetByID(sessCtx, bnplID)
-	if err != nil {
-		session.AbortTransaction(sessCtx)
-		return nil, err
-	}
-
-	trx := models.NewTransaction(&transaction, models.InitiatorTypeBNPL, bnpl.BranchID)
-	if _, err := r.transactions.InsertOne(sessCtx, trx); err != nil {
-		session.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	trx_id := trx.ID
-	bnpl.Transactions = append(bnpl.Transactions, trx_id)
-
-	// update finance of branch
-	log.Info().Str("branch_id", bnpl.BranchID).Msg("Updating branch finance")
-	update_res, err := r.finance.UpdateOne(
-		sessCtx,
-		bson.M{"branch_id": bnpl.BranchID},
-		bson.M{"$inc": bson.M{"finance.balance.cash": amount}},
-	)
-	if err != nil {
-		session.AbortTransaction(sessCtx)
-		return nil, err
-	}
-	if update_res.MatchedCount == 0 {
-		log.Error().Str("branch_id", bnpl.BranchID).Msg("Branch not found")
-		session.AbortTransaction(sessCtx)
-		return nil, repoerr.ErrNotFound
-	}
-
-	total_paid_amount := bnpl.PaidAmount + int32(amount)
-	bnpl.UpdatedAt = time.Now()
-	bnpl.PaidAmount = total_paid_amount
-	bnpl.Transactions = append(bnpl.Transactions, trx_id)
-
-	if total_paid_amount >= bnpl.TotalAmount {
-		log.Info().Msg("BNPL payment completed")
-		bnpl.Status = models.BNPLStatusCompleted
-
-		update_res, err = r.customers.UpdateOne(sessCtx, bson.M{"bnpls.id": bnplID}, bson.M{
-			"$set":  bson.M{"bnpls.$.paid_amount": total_paid_amount, "bnpls.$.updated_at": time.Now(), "bnpls.$.status": models.BNPLStatusCompleted},
-			"$push": bson.M{"bnpls.$.transactions": trx_id},
-		})
-		if err != nil || update_res.MatchedCount == 0 {
-			session.AbortTransaction(sessCtx)
-			if err != nil {
-				return nil, err
-			}
-			return nil, repoerr.ErrNotFound
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		bnpl, err := gorm.G[models.BNPL](tx).Where("id = ?", bnplID).First(ctx)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return repoerr.ErrNotFound
 		}
-	} else {
-		log.Info().Msg("Updating BNPL payment amount")
-		update_res, err = r.customers.UpdateOne(sessCtx, bson.M{"bnpls.id": bnplID}, bson.M{
-			"$set":  bson.M{"bnpls.$.paid_amount": total_paid_amount, "bnpls.$.updated_at": time.Now(), "bnpls.$.status": models.BNPLStatusActive},
-			"$push": bson.M{"bnpls.$.transactions": trx_id},
-		})
-		if err != nil || update_res.MatchedCount == 0 {
-			session.AbortTransaction(sessCtx)
-			if err != nil {
-				return nil, err
-			}
-			return nil, repoerr.ErrNotFound
+		if err != nil {
+			return err
 		}
+
+		// record a transaction against this BNPL
+		base := models.TransactionBase{
+			Amount:        uint32(amount),
+			Description:   "Credit BNPL",
+			Type:          models.TransactionTypeCredit,
+			PaymentMethod: models.PaymentMethod(paymentMethod),
+		}
+		trx := models.NewTransaction(&base, models.InitiatorTypeBNPL, bnpl.BranchID)
+		bid := bnpl.ID
+		trx.BNPLID = &bid
+		if err := gorm.G[models.Transaction](tx).Create(ctx, trx); err != nil {
+			return err
+		}
+
+		// reflect the payment on the owning branch's cash balance
+		log.Info().Str("branch_id", bnpl.BranchID).Msg("Updating branch finance")
+		res := tx.WithContext(ctx).Table("branch_finance").Where("branch_id = ?", bnpl.BranchID).
+			Update("balance_cash", gorm.Expr("balance_cash + ?", amount))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			log.Error().Str("branch_id", bnpl.BranchID).Msg("Branch not found")
+			return repoerr.ErrNotFound
+		}
+
+		// update the BNPL paid amount + status
+		totalPaid := bnpl.PaidAmount + int32(amount)
+		status := models.BNPLStatusActive
+		if totalPaid >= bnpl.TotalAmount {
+			status = models.BNPLStatusCompleted
+		}
+		now := time.Now()
+		res2 := tx.WithContext(ctx).Table("bnpls").Where("id = ?", bnplID).Updates(map[string]interface{}{
+			"paid_amount": totalPaid,
+			"status":      string(status),
+			"updated_at":  now,
+		})
+		if res2.Error != nil {
+			return res2.Error
+		}
+		if res2.RowsAffected == 0 {
+			return repoerr.ErrNotFound
+		}
+
+		bnpl.PaidAmount = totalPaid
+		bnpl.Status = status
+		bnpl.UpdatedAt = now
+		updated = &bnpl
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	session.CommitTransaction(sessCtx)
+	if err := r.attachChildren(ctx, r.db, updated); err != nil {
+		return nil, err
+	}
 	log.Info().Str("bnpl_id", bnplID).Msg("Successfully processed BNPL payment")
-	return bnpl, nil
+	return updated, nil
+}
+
+// bnplsForCustomer loads all BNPLs of a customer, each with its products and
+// transaction ids attached.
+func (r *BNPLRepository) bnplsForCustomer(ctx context.Context, db *gorm.DB, customerID string) ([]models.BNPL, error) {
+	bnpls, err := gorm.G[models.BNPL](db).Where("customer_id = ?", customerID).Order("created_at").Find(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range bnpls {
+		if err := r.attachChildren(ctx, db, &bnpls[i]); err != nil {
+			return nil, err
+		}
+	}
+	return bnpls, nil
+}
+
+// attachChildren populates a BNPL's Products map (from bnpl_products) and its
+// Transactions slice (the ids of transactions carrying its bnpl_id).
+func (r *BNPLRepository) attachChildren(ctx context.Context, db *gorm.DB, bnpl *models.BNPL) error {
+	products, err := gorm.G[models.BnplProduct](db).Where("bnpl_id = ?", bnpl.ID).Find(ctx)
+	if err != nil {
+		return err
+	}
+	bnpl.Products = make(map[string]models.SalesSessionItem, len(products))
+	for _, p := range products {
+		bnpl.Products[p.ProductID] = models.SalesSessionItem{Quantity: p.Quantity, Price: p.Price}
+	}
+
+	txns, err := gorm.G[models.Transaction](db).Select("id").Where("bnpl_id = ?", bnpl.ID).Order("created_at").Find(ctx)
+	if err != nil {
+		return err
+	}
+	bnpl.Transactions = make([]string, 0, len(txns))
+	for _, t := range txns {
+		bnpl.Transactions = append(bnpl.Transactions, t.ID)
+	}
+	return nil
 }

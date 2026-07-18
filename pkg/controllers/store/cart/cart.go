@@ -4,7 +4,7 @@ import (
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
 	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles the authenticated customer's shopping cart. All cart
@@ -13,7 +13,7 @@ type Controller struct {
 	Cart *cartrepo.CartRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Cart: cartrepo.New(db),
 	}

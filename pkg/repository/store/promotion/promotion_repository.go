@@ -1,5 +1,5 @@
 // Package promotion is the repository for storefront promotions and coupons
-// (the `promotions` collection).
+// (the `promotions` table).
 package promotion
 
 import (
@@ -9,66 +9,49 @@ import (
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/models"
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"gorm.io/gorm"
 )
 
-// PromotionRepository owns the promotions collection.
+// PromotionRepository owns the promotions table.
 type PromotionRepository struct {
-	coll *mongo.Collection
+	db *gorm.DB
 }
 
-// New builds the repository and ensures the coupon-code index exists.
-func New(db *mongo.Database) *PromotionRepository {
-	coll := db.Collection("promotions")
-	_, _ = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
-		Keys: bson.D{{Key: "code", Value: 1}},
-	})
-	return &PromotionRepository{coll: coll}
+// New builds the repository.
+func New(db *gorm.DB) *PromotionRepository {
+	return &PromotionRepository{db: db}
 }
 
 // List returns the currently-active promotions (active flag + within window).
 func (r *PromotionRepository) List(ctx context.Context) ([]models.Promotion, error) {
 	now := time.Now()
-	filter := bson.M{
-		"is_active": true,
-		"$and": []bson.M{
-			{"$or": []bson.M{{"starts_at": bson.M{"$lte": now}}, {"starts_at": bson.M{"$exists": false}}}},
-			{"$or": []bson.M{{"ends_at": bson.M{"$gte": now}}, {"ends_at": bson.M{"$exists": false}}}},
-		},
-	}
-	cursor, err := r.coll.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}))
-	if err != nil {
-		return nil, err
-	}
-	promotions := []models.Promotion{}
-	if err := cursor.All(ctx, &promotions); err != nil {
-		return nil, err
-	}
-	return promotions, nil
+	return gorm.G[models.Promotion](r.db).
+		Where("is_active = ?", true).
+		Where("(starts_at IS NULL OR starts_at <= ?)", now).
+		Where("(ends_at IS NULL OR ends_at >= ?)", now).
+		Order("created_at DESC").
+		Find(ctx)
 }
 
 // GetByID returns a single promotion, or repoerr.ErrNotFound.
 func (r *PromotionRepository) GetByID(ctx context.Context, id string) (*models.Promotion, error) {
-	return r.findOne(ctx, bson.M{"_id": id})
+	return r.findOne(ctx, "id = ?", id)
 }
 
 // GetByCode returns the promotion backing a coupon code, or repoerr.ErrNotFound.
 func (r *PromotionRepository) GetByCode(ctx context.Context, code string) (*models.Promotion, error) {
-	return r.findOne(ctx, bson.M{"code": code})
+	return r.findOne(ctx, "code = ?", code)
 }
 
-func (r *PromotionRepository) findOne(ctx context.Context, filter bson.M) (*models.Promotion, error) {
-	promo := &models.Promotion{}
-	err := r.coll.FindOne(ctx, filter).Decode(promo)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+func (r *PromotionRepository) findOne(ctx context.Context, query string, args ...interface{}) (*models.Promotion, error) {
+	promo, err := gorm.G[models.Promotion](r.db).Where(query, args...).First(ctx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, repoerr.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return promo, nil
+	return &promo, nil
 }
 
 // ValidateCoupon checks a coupon code against a cart subtotal and returns the

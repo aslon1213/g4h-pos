@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // BNPLController exposes the admin BNPL endpoints. All database access goes
@@ -16,7 +16,7 @@ type BNPLController struct {
 	Repo *bnplrepo.BNPLRepository
 }
 
-func New(db *mongo.Database) *BNPLController {
+func New(db *gorm.DB) *BNPLController {
 	return &BNPLController{
 		Repo: bnplrepo.New(db),
 	}

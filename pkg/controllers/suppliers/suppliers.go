@@ -1,27 +1,27 @@
 package suppliers
 
 import (
-	"github.com/aslon1213/g4h_pos_erp/pkg/middleware"
 	models "github.com/aslon1213/g4h_pos_erp/pkg/models"
+	activities_repo "github.com/aslon1213/g4h_pos_erp/pkg/repository/activities"
 	suppliersrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/suppliers"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // SuppliersController exposes the admin suppliers endpoints. All database access
 // goes through Repo; the controller only parses requests, logs audit activity,
 // and renders the response envelope.
 type SuppliersController struct {
-	Repo                 *suppliersrepo.SuppliersRepository
-	activitiesCollection *mongo.Collection
+	Repo           *suppliersrepo.SuppliersRepository
+	ActivitiesRepo *activities_repo.ActivitiesRepo
 }
 
-func New(db *mongo.Database) *SuppliersController {
+func New(db *gorm.DB) *SuppliersController {
 	return &SuppliersController{
-		Repo:                 suppliersrepo.New(db),
-		activitiesCollection: db.Collection("activities"),
+		Repo:           suppliersrepo.New(db),
+		ActivitiesRepo: activities_repo.New(db),
 	}
 }
 
@@ -99,7 +99,7 @@ func (s *SuppliersController) CreateSupplier(c *fiber.Ctx) error {
 		return models.RespondRepoError(c, err)
 	}
 
-	middleware.LogActivityWithCtx(c, middleware.ActivityTypeCreateSupplier, supplier, s.activitiesCollection)
+	s.ActivitiesRepo.LogActivityWithCtx(c, activities_repo.ActivityTypeCreateSupplier, supplier)
 	log.Debug().Str("id", supplier.ID).Msg("Successfully created supplier")
 	return c.Status(fiber.StatusCreated).JSON(models.NewOutput(supplier))
 }

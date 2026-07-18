@@ -5,7 +5,7 @@ import (
 	cartrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/cart"
 	promotionrepo "github.com/aslon1213/g4h_pos_erp/pkg/repository/store/promotion"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gorm.io/gorm"
 )
 
 // Controller handles storefront promotions and coupons. Promotions/coupons are
@@ -15,7 +15,7 @@ type Controller struct {
 	Cart       *cartrepo.CartRepository
 }
 
-func New(db *mongo.Database) *Controller {
+func New(db *gorm.DB) *Controller {
 	return &Controller{
 		Promotions: promotionrepo.New(db),
 		Cart:       cartrepo.New(db),

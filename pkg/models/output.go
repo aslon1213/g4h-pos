@@ -1,12 +1,10 @@
 package models
 
 import (
-	"context"
 	"errors"
 
 	"github.com/aslon1213/g4h_pos_erp/pkg/repository/repoerr"
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 type Error struct {
@@ -55,14 +53,6 @@ func NewErrors(errors ...error) []Error {
 		})
 	}
 	return errs
-}
-
-func AbortTransactionAndReturnError(ctx context.Context, session *mongo.Session, c *fiber.Ctx, err error) error {
-
-	return c.Status(fiber.StatusInternalServerError).JSON(NewErrorOutput(Error{
-		Message: err.Error(),
-		Code:    fiber.StatusInternalServerError,
-	}))
 }
 
 func ReturnError(c *fiber.Ctx, err error) error {
